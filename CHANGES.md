@@ -1,5 +1,11 @@
 # Changes
 
+## 2d8686b
+
+- `scripts/grant.sh` runs `tools/mcp_shell_grant.py` with the repository's
+  venv interpreter, from anywhere and through symlinks; without a venv it says
+  how to create one
+
 ## 9383871
 
 - The grant program is `tools/mcp_shell_grant.py`, no longer an entry point
