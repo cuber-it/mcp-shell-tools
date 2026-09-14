@@ -1,4 +1,8 @@
-"""What the tools share: the working directory and the limits they respect."""
+"""What the tools share: the working directory and the limits they respect.
+
+Every check of where a tool may reach is made here and nowhere else, so that it
+can later be handed to a policy without touching the tools.
+"""
 
 from __future__ import annotations
 
@@ -6,19 +10,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from mcp_shell_tools.errors import OutsideBoundaryError, ToolError
+
 SKIPPED = frozenset({".git", "__pycache__", ".venv", "node_modules", ".mypy_cache"})
 
 DEFAULT_TIMEOUT = 120.0
 DEFAULT_MAX_OUTPUT = 200_000
 DEFAULT_MAX_RESULTS = 200
-
-
-class ToolError(Exception):
-    """A tool refused to do what it was asked."""
-
-
-class OutsideBoundaryError(ToolError):
-    """The path lies outside what this installation may touch."""
 
 
 @dataclass
@@ -29,7 +27,7 @@ class Workspace:
         working_dir: Directory relative paths are resolved against.
         allowed_roots: Directories the tools may touch, empty for no limit.
         timeout: Seconds a command may run.
-        max_output: Bytes of output kept before it is cut.
+        max_output: Characters of output kept before it is cut.
         max_results: Rows a listing or search returns at most.
         notes: Notes kept by the note tools, in order.
         state_dir: Where sessions are written.
@@ -52,24 +50,72 @@ class Workspace:
         candidate = Path(path).expanduser()
         if not candidate.is_absolute():
             candidate = self.working_dir / candidate
-        resolved = Path(candidate).resolve()
-        if not self.allowed_roots:
-            return resolved
-        for root in self.allowed_roots:
-            if resolved == root or root in resolved.parents:
-                return resolved
-        raise OutsideBoundaryError(f"outside the allowed roots: {resolved}")
+        resolved = candidate.resolve()
+        if not self.admits(resolved):
+            raise OutsideBoundaryError(f"outside the allowed roots: {resolved}")
+        return resolved
 
-    def cut(self, text: str) -> str:
-        """Shorten output that is too long, saying how much was dropped.
+    def admits(self, resolved: Path) -> bool:
+        """Say whether a resolved path lies inside the allowed roots.
+
+        Without allowed roots every path is admitted.
+        """
+        return not self.allowed_roots or any(
+            resolved == root or root in resolved.parents for root in self.allowed_roots
+        )
+
+    def existing(self, path: str) -> Path:
+        """Resolve a path that has to name something that exists.
+
+        Raises:
+            OutsideBoundaryError: The path lies outside ``allowed_roots``.
+            ToolError: Nothing exists there.
+        """
+        target = self.resolve(path)
+        if not target.exists():
+            raise ToolError(f"no such path: {target}")
+        return target
+
+    def directory(self, path: str) -> Path:
+        """Resolve a path that has to name an existing directory.
+
+        Raises:
+            OutsideBoundaryError: The path lies outside ``allowed_roots``.
+            ToolError: There is no directory there.
+        """
+        target = self.resolve(path)
+        if not target.is_dir():
+            raise ToolError(f"no such directory: {target}")
+        return target
+
+    def glob(self, root: Path, pattern: str) -> list[Path]:
+        """Return what a pattern matches below root, as far as it may be seen.
 
         Returns:
-            The output, cut to ``max_output`` with a note if it was.
+            The hits in sorted order, without those :meth:`within` rejects.
+
+        Raises:
+            ToolError: The pattern is not usable, for instance empty or absolute.
         """
-        if len(text) <= self.max_output:
-            return text
-        dropped = len(text) - self.max_output
-        return f"{text[: self.max_output]}\n[... {dropped} more characters]"
+        try:
+            hits = sorted(root.glob(pattern))
+        except (ValueError, NotImplementedError) as err:
+            raise ToolError(f"not a usable pattern {pattern!r}: {err}") from err
+        return [hit for hit in hits if self.within(root, hit)]
+
+    def within(self, root: Path, hit: Path) -> bool:
+        """Say whether something found below root may be shown or touched.
+
+        A hit is rejected when it lies in a skipped directory below root, or
+        when it leads outside the allowed roots. A ``..`` in a pattern or a
+        symlink on the way can lead anywhere, so the hit is resolved and
+        checked like a path a caller named. Only the part below root counts
+        for skipping: a root that itself lies inside ``.venv`` is still
+        searched.
+        """
+        if any(part in SKIPPED for part in hit.relative_to(root).parts):
+            return False
+        return self.admits(hit.resolve())
 
 
 def workspace_from(config: dict[str, Any]) -> Workspace:
@@ -94,47 +140,3 @@ def workspace_from(config: dict[str, Any]) -> Workspace:
         max_results=int(config.get("max_results", DEFAULT_MAX_RESULTS)),
         state_dir=Path(str(state)).expanduser().resolve() if state else None,
     )
-
-
-def read_text(space: Workspace, path: str) -> str:
-    """Return a file's text, with the refusals a caller can act on.
-
-    Raises:
-        ToolError: The file is missing, is a directory, or is not UTF-8 text.
-    """
-    target = space.resolve(path)
-    try:
-        return target.read_text(encoding="utf-8")
-    except FileNotFoundError as err:
-        raise ToolError(f"no such file: {target}") from err
-    except IsADirectoryError as err:
-        raise ToolError(f"this is a directory: {target}") from err
-    except UnicodeDecodeError as err:
-        raise ToolError(f"not text, or not UTF-8: {target}") from err
-
-
-def size(value: float) -> str:
-    """Render a byte count in the largest unit that keeps it readable.
-
-    Returns:
-        The count with a unit suffix, for instance ``1.9M``.
-    """
-    for unit in ("B", "K", "M", "G"):
-        if value < 1024:
-            return f"{value:.0f}{unit}" if unit == "B" else f"{value:.1f}{unit}"
-        value /= 1024
-    return f"{value:.1f}T"
-
-
-def render(rows: list[str], limit: int, empty: str) -> str:
-    """Join result rows, cutting at the limit and saying how many were left.
-
-    Returns:
-        The rows, or ``empty`` when there are none.
-    """
-    if not rows:
-        return empty
-    if len(rows) <= limit:
-        return "\n".join(rows)
-    dropped = len(rows) - limit
-    return "\n".join(rows[:limit] + [f"[... {dropped} more]"])

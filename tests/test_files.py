@@ -6,8 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from mcp_shell_tools import files
-from mcp_shell_tools.workspace import ToolError, Workspace
+from mcp_shell_tools import ToolError, Workspace, files
 
 
 def test_reading_returns_the_content(space: Workspace, tmp_path: Path) -> None:
@@ -47,9 +46,7 @@ def test_writing_creates_the_file(space: Workspace, tmp_path: Path) -> None:
     assert (tmp_path / "new.txt").read_text(encoding="utf-8") == "content"
 
 
-def test_writing_creates_missing_directories(
-    space: Workspace, tmp_path: Path
-) -> None:
+def test_writing_creates_missing_directories(space: Workspace, tmp_path: Path) -> None:
     files.file_write(space, "deep/down/new.txt", "content")
 
     assert (tmp_path / "deep/down/new.txt").is_file()
@@ -86,7 +83,7 @@ def test_listing_names_the_entries(space: Workspace, tmp_path: Path) -> None:
     listing = files.file_list(space, ".")
 
     assert "adir/" in listing
-    assert "afile" in listing
+    assert "afile  2 bytes" in listing
 
 
 def test_listing_puts_directories_first(space: Workspace, tmp_path: Path) -> None:
@@ -153,8 +150,15 @@ def test_moving_takes_the_file_along(space: Workspace, tmp_path: Path) -> None:
 
 
 def test_moving_something_missing_is_refused(space: Workspace) -> None:
-    with pytest.raises(ToolError):
+    with pytest.raises(ToolError, match="nothing to transfer"):
         files.file_move(space, "nowhere", "elsewhere")
+
+
+def test_a_failed_move_says_move(space: Workspace, tmp_path: Path) -> None:
+    (tmp_path / "adir").mkdir()
+
+    with pytest.raises(ToolError, match="could not move"):
+        files.file_move(space, "adir", "adir/below")
 
 
 def test_copying_leaves_the_original(space: Workspace, tmp_path: Path) -> None:
@@ -177,6 +181,23 @@ def test_copying_a_directory_takes_the_content(
     assert (tmp_path / "copy/inside").read_text(encoding="utf-8") == "x"
 
 
+def test_a_failed_copy_says_copy(space: Workspace, tmp_path: Path) -> None:
+    (tmp_path / "adir").mkdir()
+
+    with pytest.raises(ToolError, match="could not copy"):
+        files.file_copy(space, "adir", "adir")
+
+
+def test_copying_a_directory_keeps_links_as_links(bounded: Workspace) -> None:
+    inside = bounded.working_dir
+    (inside / "adir").mkdir()
+    (inside / "adir/link").symlink_to(inside.parent / "outside.txt")
+
+    files.file_copy(bounded, "adir", "copy")
+
+    assert (inside / "copy/link").is_symlink()
+
+
 def test_the_tree_shows_what_is_below(space: Workspace, tmp_path: Path) -> None:
     (tmp_path / "adir").mkdir()
     (tmp_path / "adir/inside").write_text("x", encoding="utf-8")
@@ -197,6 +218,84 @@ def test_the_tree_stops_at_the_given_depth(space: Workspace, tmp_path: Path) -> 
     assert "deep" not in shown
 
 
+def test_the_tree_counts_what_it_left_out(tmp_path: Path) -> None:
+    space = Workspace(working_dir=tmp_path, max_results=5)
+    (tmp_path / "big").mkdir()
+    for number in range(40):
+        (tmp_path / f"big/f{number}").write_text("x", encoding="utf-8")
+
+    assert "36 more" in files.tree(space, "big", 2)
+
+
+def test_the_tree_leaves_out_the_noise(space: Workspace, tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git/config").write_text("x", encoding="utf-8")
+
+    shown = files.tree(space, ".")
+
+    assert "src/" in shown
+    assert ".git" not in shown
+
+
+def test_the_tree_does_not_follow_a_link_out_of_bounds(bounded: Workspace) -> None:
+    elsewhere = bounded.working_dir.parent / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "hidden.txt").write_text("x", encoding="utf-8")
+    (bounded.working_dir / "link").symlink_to(elsewhere)
+
+    assert "hidden.txt" not in files.tree(bounded, ".")
+
+
 def test_the_tree_of_a_missing_directory_is_refused(space: Workspace) -> None:
     with pytest.raises(ToolError):
         files.tree(space, "nowhere")
+
+
+def test_file_info_names_kind_and_size(space: Workspace, tmp_path: Path) -> None:
+    (tmp_path / "note.txt").write_text("hello", encoding="utf-8")
+
+    out = files.file_info(space, "note.txt")
+
+    assert "kind:      file" in out
+    assert "size:      5 bytes" in out
+    assert "modified:" in out
+
+
+def test_file_info_counts_directory_entries(space: Workspace, tmp_path: Path) -> None:
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub/a").write_text("a", encoding="utf-8")
+    (tmp_path / "sub/b").write_text("b", encoding="utf-8")
+
+    out = files.file_info(space, "sub")
+
+    assert "kind:      directory" in out
+    assert "entries:   2" in out
+
+
+def test_file_info_on_a_missing_path_is_refused(space: Workspace) -> None:
+    with pytest.raises(ToolError):
+        files.file_info(space, "nowhere")
+
+
+def test_head_and_tail_take_opposite_ends(space: Workspace, tmp_path: Path) -> None:
+    (tmp_path / "log").write_text(
+        "\n".join(str(n) for n in range(1, 21)), encoding="utf-8"
+    )
+
+    assert files.head(space, "log", 3) == "1\n2\n3"
+    assert files.tail(space, "log", 3) == "18\n19\n20"
+
+
+def test_head_and_tail_cope_with_short_files(space: Workspace, tmp_path: Path) -> None:
+    (tmp_path / "short").write_text("only one line", encoding="utf-8")
+
+    assert files.head(space, "short", 10) == "only one line"
+    assert files.tail(space, "short", 10) == "only one line"
+
+
+def test_head_and_tail_give_at_least_one_line(space: Workspace, tmp_path: Path) -> None:
+    (tmp_path / "log").write_text("first\nlast", encoding="utf-8")
+
+    assert files.head(space, "log", 0) == "first"
+    assert files.tail(space, "log", 0) == "last"

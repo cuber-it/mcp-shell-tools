@@ -11,16 +11,16 @@ from pathlib import Path
 
 import pytest
 
-from mcp_shell_tools import server
-from mcp_shell_tools.workspace import ToolError, Workspace
+from mcp_shell_tools import ToolError, Workspace
+from mcp_shell_tools.server import app
 
 
 def test_stdio_is_the_default() -> None:
-    assert server.parse([]).transport == "stdio"
+    assert app.parse([]).transport == "stdio"
 
 
 def test_the_http_arguments_are_read() -> None:
-    args = server.parse(
+    args = app.parse(
         ["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "12204"]
     )
 
@@ -30,18 +30,18 @@ def test_the_http_arguments_are_read() -> None:
 
 
 def test_the_path_defaults_to_mcp_and_can_be_moved() -> None:
-    assert server.parse([]).path == "/mcp"
-    assert server.parse(["--path", "/shell"]).path == "/shell"
+    assert app.parse([]).path == "/mcp"
+    assert app.parse(["--path", "/shell"]).path == "/shell"
 
 
 def test_allowed_roots_may_be_repeated() -> None:
-    args = server.parse(["--allowed-root", "/one", "--allowed-root", "/two"])
+    args = app.parse(["--allowed-root", "/one", "--allowed-root", "/two"])
 
     assert args.allowed_root == ["/one", "/two"]
 
 
 def test_the_workspace_carries_the_arguments(tmp_path: Path) -> None:
-    args = server.parse(
+    args = app.parse(
         [
             "--working-dir",
             str(tmp_path),
@@ -52,7 +52,7 @@ def test_the_workspace_carries_the_arguments(tmp_path: Path) -> None:
         ]
     )
 
-    space = server.workspace_from_args(args)
+    space = app.workspace_from_args(args)
 
     assert space.working_dir == tmp_path
     assert space.allowed_roots == (tmp_path,)
@@ -60,7 +60,7 @@ def test_the_workspace_carries_the_arguments(tmp_path: Path) -> None:
 
 
 def test_without_allowed_roots_there_is_no_boundary(tmp_path: Path) -> None:
-    space = server.workspace_from_args(server.parse(["--working-dir", str(tmp_path)]))
+    space = app.workspace_from_args(app.parse(["--working-dir", str(tmp_path)]))
 
     assert not space.allowed_roots
     assert space.resolve("/etc") == Path("/etc")
@@ -71,13 +71,13 @@ def test_a_working_directory_that_is_no_directory_is_refused(tmp_path: Path) -> 
     afile.write_text("x", encoding="utf-8")
 
     with pytest.raises(ToolError):
-        server.workspace_from_args(server.parse(["--working-dir", str(afile)]))
+        app.workspace_from_args(app.parse(["--working-dir", str(afile)]))
 
 
 def test_the_server_publishes_the_whole_set(tmp_path: Path) -> None:
     pytest.importorskip("mcp.server.mcpserver")
 
-    built = server.build(Workspace(working_dir=tmp_path))
+    built = app.build(Workspace(working_dir=tmp_path))
 
     assert built.name == "mcp-shell-tools"
     assert len(asyncio.run(built.list_tools())) == 33
@@ -86,24 +86,32 @@ def test_the_server_publishes_the_whole_set(tmp_path: Path) -> None:
 def test_every_published_tool_carries_its_description(tmp_path: Path) -> None:
     pytest.importorskip("mcp.server.mcpserver")
 
-    built = server.build(Workspace(working_dir=tmp_path))
-
-    published = asyncio.run(built.list_tools())
+    published = asyncio.run(app.build(Workspace(working_dir=tmp_path)).list_tools())
 
     assert [tool.name for tool in published if not tool.description] == []
+
+
+def test_the_input_schema_follows_the_tool_signature(tmp_path: Path) -> None:
+    pytest.importorskip("mcp.server.mcpserver")
+
+    published = asyncio.run(app.build(Workspace(working_dir=tmp_path)).list_tools())
+    schema = {tool.name: tool for tool in published}["file_read"].input_schema
+
+    assert set(schema["properties"]) == {"path", "start", "end"}
+    assert schema["required"] == ["path"]
 
 
 def test_the_server_carries_its_instructions(tmp_path: Path) -> None:
     pytest.importorskip("mcp.server.mcpserver")
 
-    built = server.build(Workspace(working_dir=tmp_path))
+    built = app.build(Workspace(working_dir=tmp_path))
 
-    assert built.instructions == server.INSTRUCTIONS
+    assert built.instructions == app.INSTRUCTIONS
 
 
 def test_a_tool_call_reaches_the_tools(tmp_path: Path) -> None:
     pytest.importorskip("mcp.server.mcpserver")
-    built = server.build(Workspace(working_dir=tmp_path))
+    built = app.build(Workspace(working_dir=tmp_path))
 
     asyncio.run(
         built.call_tool("file_write", {"path": "note.txt", "content": "served"})
@@ -115,7 +123,7 @@ def test_a_tool_call_reaches_the_tools(tmp_path: Path) -> None:
 def test_a_refusal_keeps_its_reason(tmp_path: Path) -> None:
     """The SDK blanks a crash but carries its own ToolError through."""
     exceptions = pytest.importorskip("mcp.server.mcpserver.exceptions")
-    built = server.build(Workspace(working_dir=tmp_path))
+    built = app.build(Workspace(working_dir=tmp_path))
 
     with pytest.raises(exceptions.ToolError) as refused:
         asyncio.run(built.call_tool("file_read", {"path": "nowhere.txt"}))
@@ -126,9 +134,7 @@ def test_a_refusal_keeps_its_reason(tmp_path: Path) -> None:
 
 def test_a_boundary_refusal_keeps_its_reason(tmp_path: Path) -> None:
     exceptions = pytest.importorskip("mcp.server.mcpserver.exceptions")
-    built = server.build(
-        Workspace(working_dir=tmp_path, allowed_roots=(tmp_path,))
-    )
+    built = app.build(Workspace(working_dir=tmp_path, allowed_roots=(tmp_path,)))
 
     with pytest.raises(exceptions.ToolError) as refused:
         asyncio.run(built.call_tool("file_read", {"path": "/etc/hostname"}))

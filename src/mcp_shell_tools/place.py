@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from mcp_shell_tools.workspace import ToolError, Workspace
+from mcp_shell_tools.output import cut, read_text
+from mcp_shell_tools.workspace import Workspace
 
 PROJECT_FILE = "CLAUDE.md"
 PROJECT_EXCERPT = 4000
@@ -22,11 +23,8 @@ def cd(space: Workspace, path: str) -> str:
     Raises:
         ToolError: There is no such directory.
     """
-    target = space.resolve(path)
-    if not target.is_dir():
-        raise ToolError(f"no such directory: {target}")
-    space.working_dir = target
-    return f"working directory is now {target}"
+    space.working_dir = space.directory(path)
+    return f"working directory is now {space.working_dir}"
 
 
 def project_context(space: Workspace, path: str = ".") -> str:
@@ -36,18 +34,11 @@ def project_context(space: Workspace, path: str = ".") -> str:
         The file's beginning, or a line saying there is none.
 
     Raises:
-        ToolError: The directory does not exist.
+        ToolError: The directory does not exist, or the file leads outside
+            the allowed roots or cannot be read as text.
     """
-    root = space.resolve(path)
-    if not root.is_dir():
-        raise ToolError(f"no such directory: {root}")
-    instructions = root / PROJECT_FILE
+    root = space.directory(path)
+    instructions = space.resolve(str(root / PROJECT_FILE))
     if not instructions.is_file():
         return f"no {PROJECT_FILE} in {root}"
-    try:
-        text = instructions.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as err:
-        raise ToolError(f"could not read {instructions}: {err}") from err
-    if len(text) > PROJECT_EXCERPT:
-        return f"{text[:PROJECT_EXCERPT]}\n[... {len(text) - PROJECT_EXCERPT} more]"
-    return text
+    return cut(read_text(instructions), PROJECT_EXCERPT)

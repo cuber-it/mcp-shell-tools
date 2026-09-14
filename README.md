@@ -42,15 +42,18 @@ The server speaks protocol revision 2026-07-28, where a request carries its own
 version and capabilities and there is no `initialize` handshake. The SDK still
 answers the older handshake for clients that need it.
 
-Only `server.py` imports the SDK. `registry.py` publishes the tools on
-anything whose `tool()` returns a decorator, so a proxy or a server of your own
-can hand it its own registrar:
+Only `server/app.py` imports the SDK. `server/registry.py` hands out the tools
+as a plain catalogue, name to function, all bound to one workspace. A server of
+your own publishes the same set from it:
 
 ```python
-from mcp_shell_tools import Workspace
-from mcp_shell_tools.registry import register
+from pathlib import Path
 
-register(your_server, Workspace(working_dir=Path.cwd()))
+from mcp_shell_tools import Workspace
+from mcp_shell_tools.server.registry import catalogue
+
+for name, tool in catalogue(Workspace(working_dir=Path.cwd())).items():
+    your_server.add_tool(tool, name=name)
 ```
 
 One thing to take over with it: the SDK decides by exception class whether a
@@ -59,7 +62,7 @@ message; anything else is a crash, and the caller learns only that some tool
 failed. The tools raise `mcp_shell_tools.ToolError`, so a server of your own
 should catch it and re-raise it as whatever its protocol layer calls an
 anticipated failure — otherwise "no such file" arrives as a blank error.
-`server.py` does this in `_Anticipated`.
+`server/app.py` does this in `_anticipated`.
 
 ## Use
 
@@ -89,7 +92,7 @@ from mcp_shell_tools import ToolError
 try:
     files.file_read(space, "nowhere.txt")
 except ToolError as err:
-    print(err)          # no such file: /home/you/nowhere.txt
+    print(err)  # no such file: /home/you/nowhere.txt
 ```
 
 ## The workspace
@@ -97,15 +100,17 @@ except ToolError as err:
 ```python
 Workspace(
     working_dir=Path("/home/you/projects"),
-    allowed_roots=(),      # empty means the tools may touch the whole disk
-    timeout=120.0,         # seconds a command may run
-    max_output=200_000,    # characters of output kept
-    max_results=200,       # rows a listing or search returns
-    state_dir=None,        # where sessions are written
+    allowed_roots=(),  # empty means the tools may touch the whole disk
+    timeout=120.0,  # seconds a command may run
+    max_output=200_000,  # characters of output kept
+    max_results=200,  # rows a listing or search returns
+    state_dir=None,  # where sessions are written
 )
 ```
 
-`allowed_roots` confines every path the tools resolve. Left empty there is no
+`allowed_roots` confines every path the tools resolve, and every hit a search
+pattern turns up: a `..` in the pattern or a symlink pointing outside does not
+get past it. Left empty there is no
 limit, which is what a workstation tool set is for; set it when the tools are
 reachable by someone who should not have the whole disk.
 
@@ -133,7 +138,9 @@ looking at a different file than they think; several matches mean the change
 is ambiguous. Both are refused rather than guessed.
 
 `find_replace` does nothing until `apply` is true, and it never descends into
-`.git`, `.venv`, `node_modules` or `__pycache__`.
+`.git`, `.venv`, `node_modules` or `__pycache__`. It stops after `max_results`
+affected files and says so, and a write that fails names how many files before
+it were already changed.
 
 `ps` reports memory, not a CPU share. A share is a measurement over a span of
 time, and a single listing has no span to measure over.

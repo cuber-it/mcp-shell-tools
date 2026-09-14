@@ -10,19 +10,15 @@ argument, so the caller holds the state and nothing hides in a module global.
     space = Workspace(working_dir=Path.cwd())
     print(files.file_read(space, "README.md"))
 
-Nothing here knows about MCP. What publishes these functions as MCP tools is
-:mod:`mcp_shell_tools.server`, and it is the only module that imports the SDK.
+Nothing here knows about MCP or any other server. :mod:`mcp_shell_tools.server`
+publishes these functions; the library itself never imports it.
 """
 
 from importlib.metadata import PackageNotFoundError, version
 
 from mcp_shell_tools import edit, files, find, notes, place, run, system
-from mcp_shell_tools.workspace import (
-    OutsideBoundaryError,
-    ToolError,
-    Workspace,
-    workspace_from,
-)
+from mcp_shell_tools.errors import OutsideBoundaryError, ToolError
+from mcp_shell_tools.workspace import Workspace, workspace_from
 
 try:
     __version__ = version("mcp-shell-tools")

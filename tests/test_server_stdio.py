@@ -2,7 +2,7 @@
 
 What a client sees is pinned in `test_server_client.py`, in process. This is
 the one thing that cannot be checked that way: that `python -m
-mcp_shell_tools.server` comes up as a process and answers on its pipes.
+mcp_shell_tools.server.app` comes up as a process and answers on its pipes.
 
 The request carries the per-request envelope of protocol revision 2026-07-28.
 There is no `initialize` handshake any more — it was removed with SEP-2575, and
@@ -40,7 +40,7 @@ def ask(method: str, **params: object) -> dict[str, object]:
         "params": {**params, "_meta": ENVELOPE},
     }
     finished = subprocess.run(
-        [sys.executable, "-m", "mcp_shell_tools.server", "--working-dir", "/tmp"],
+        [sys.executable, "-m", "mcp_shell_tools.server.app", "--working-dir", "/tmp"],
         input=json.dumps(request) + "\n",
         capture_output=True,
         text=True,

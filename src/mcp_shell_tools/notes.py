@@ -13,7 +13,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from mcp_shell_tools.workspace import ToolError, Workspace
+from mcp_shell_tools.errors import ToolError
+from mcp_shell_tools.output import cut
+from mcp_shell_tools.workspace import Workspace
 
 SESSION_SUFFIX = ".session.json"
 
@@ -35,7 +37,7 @@ def memory_show(space: Workspace) -> str:
     """Return the notes kept so far, oldest first."""
     if not space.notes:
         return "nothing noted"
-    return space.cut("\n".join(space.notes))
+    return cut("\n".join(space.notes), space.max_output)
 
 
 def memory_clear(space: Workspace) -> str:
@@ -72,21 +74,21 @@ def session_resume(space: Workspace, name: str) -> str:
     """Load a saved session back into the workspace.
 
     The notes and the working directory are restored. What a caller did
-    besides that is not restored, because it was never saved.
+    besides that is not restored, because it was never saved. Everything is
+    checked before anything is restored, so a refusal leaves the workspace as
+    it was.
 
     Raises:
-        ToolError: There is no such session, or it cannot be read.
+        ToolError: There is no such session, it cannot be read, or its
+            working directory lies outside the allowed roots.
     """
-    target = _session_file(space, name)
-    payload = _read_session(target)
-    space.notes = list(payload.get("notes", []))
+    payload = _read_session(_session_file(space, name))
     saved_dir = payload.get("working_dir")
-    if isinstance(saved_dir, str):
-        # Through resolve, so a session file cannot move the workspace out of
-        # allowed_roots.
-        restored = space.resolve(saved_dir)
-        if restored.is_dir():
-            space.working_dir = restored
+    restored = space.resolve(saved_dir) if isinstance(saved_dir, str) else None
+
+    space.notes = list(payload.get("notes", []))
+    if restored is not None and restored.is_dir():
+        space.working_dir = restored
     summary = payload.get("summary") or "no summary"
     return (
         f"resumed session {name}: {summary}\n"

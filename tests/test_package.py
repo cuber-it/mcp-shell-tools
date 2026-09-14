@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 import mcp_shell_tools
 from mcp_shell_tools import ToolError, Workspace, files, workspace_from
+
+LOADED_SDK = (
+    "import sys, mcp_shell_tools, mcp_shell_tools.server.registry; "
+    "print(any(name == 'mcp' or name.startswith('mcp.') for name in sys.modules))"
+)
 
 
 def test_everything_promised_is_reachable() -> None:
@@ -26,29 +33,11 @@ def test_a_tool_works_through_the_facade(tmp_path: Path) -> None:
     assert files.file_read(space, "note.txt") == "content"
 
 
-def test_every_group_is_reachable_as_a_module(tmp_path: Path) -> None:
-    space = Workspace(working_dir=tmp_path)
-    groups = (
-        mcp_shell_tools.edit,
-        mcp_shell_tools.files,
-        mcp_shell_tools.find,
-        mcp_shell_tools.notes,
-        mcp_shell_tools.place,
-        mcp_shell_tools.run,
-        mcp_shell_tools.system,
-    )
-
-    assert mcp_shell_tools.place.cwd(space) == str(tmp_path)
-    assert len(groups) == 7
-
-
 def test_the_refusal_from_the_facade_is_the_one_the_tools_raise(
     tmp_path: Path,
 ) -> None:
-    space = Workspace(working_dir=tmp_path)
-
     with pytest.raises(ToolError):
-        files.file_read(space, "nowhere.txt")
+        files.file_read(Workspace(working_dir=tmp_path), "nowhere.txt")
 
 
 def test_a_workspace_can_be_built_from_a_mapping(tmp_path: Path) -> None:
@@ -61,3 +50,14 @@ def test_a_workspace_can_be_built_from_a_mapping(tmp_path: Path) -> None:
 def test_the_version_is_a_string() -> None:
     assert isinstance(mcp_shell_tools.__version__, str)
     assert mcp_shell_tools.__version__
+
+
+def test_the_library_and_the_catalogue_do_not_load_the_sdk() -> None:
+    finished = subprocess.run(
+        [sys.executable, "-c", LOADED_SDK],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert finished.stdout.strip() == "False"

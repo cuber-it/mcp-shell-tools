@@ -6,7 +6,9 @@ import os
 import shutil
 import subprocess
 
-from mcp_shell_tools.workspace import ToolError, Workspace
+from mcp_shell_tools.errors import ToolError
+from mcp_shell_tools.output import cut
+from mcp_shell_tools.workspace import Workspace
 
 
 def shell_exec(space: Workspace, command: str, timeout: float = 0) -> str:
@@ -42,7 +44,7 @@ def shell_exec(space: Workspace, command: str, timeout: float = 0) -> str:
     output = finished.stdout + finished.stderr
     if finished.returncode != 0:
         output = f"{output}\n[exit status {finished.returncode}]"
-    return space.cut(output) if output.strip() else "[no output]"
+    return cut(output, space.max_output) if output.strip() else "[no output]"
 
 
 def which(space: Workspace, name: str) -> str:
@@ -73,7 +75,7 @@ def env(space: Workspace, name: str = "") -> str:
             raise ToolError(f"not set: {name}")
         return f"{name}={value}"
     rows = [f"{key}={value}" for key, value in sorted(os.environ.items())]
-    return space.cut("\n".join(rows))
+    return cut("\n".join(rows), space.max_output)
 
 
 def set_env(space: Workspace, name: str, value: str) -> str:

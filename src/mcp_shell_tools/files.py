@@ -8,7 +8,9 @@ import stat
 from datetime import datetime
 from pathlib import Path
 
-from mcp_shell_tools.workspace import ToolError, Workspace, read_text, render
+from mcp_shell_tools.errors import ToolError
+from mcp_shell_tools.output import cut, read_text, render
+from mcp_shell_tools.workspace import Workspace
 
 TREE_INDENT = "    "
 
@@ -22,13 +24,13 @@ def file_read(space: Workspace, path: str, start: int = 0, end: int = 0) -> str:
     Raises:
         ToolError: The file does not exist or cannot be read as text.
     """
-    text = read_text(space, path)
+    text = read_text(space.resolve(path))
     if not start and not end:
-        return space.cut(text)
+        return cut(text, space.max_output)
     lines = text.splitlines()
     first = max(start - 1, 0)
     last = end if end else len(lines)
-    return space.cut("\n".join(lines[first:last]))
+    return cut("\n".join(lines[first:last]), space.max_output)
 
 
 def file_write(space: Workspace, path: str, content: str) -> str:
@@ -74,9 +76,7 @@ def file_list(space: Workspace, path: str = ".") -> str:
     Raises:
         ToolError: The directory does not exist.
     """
-    target = space.resolve(path)
-    if not target.is_dir():
-        raise ToolError(f"no such directory: {target}")
+    target = space.directory(path)
     entries = sorted(target.iterdir(), key=lambda item: (item.is_file(), item.name))
     rows = [_describe(entry) for entry in entries]
     return render(rows, space.max_results, f"{target} is empty")
@@ -113,6 +113,9 @@ def file_move(space: Workspace, source: str, destination: str) -> str:
 def file_copy(space: Workspace, source: str, destination: str) -> str:
     """Copy a file, or a directory with everything in it.
 
+    Symlinks inside a copied directory are copied as links. Copying what they
+    point to would carry content from outside the allowed roots inside.
+
     Raises:
         ToolError: The source is missing or the copy fails.
     """
@@ -122,17 +125,18 @@ def file_copy(space: Workspace, source: str, destination: str) -> str:
 def tree(space: Workspace, path: str = ".", depth: int = 3) -> str:
     """Show a directory and what is below it, down to a depth.
 
+    Skipped directories and entries leading outside the allowed roots are
+    left out.
+
     Returns:
         The tree, one entry per line, cut at the result limit.
 
     Raises:
         ToolError: The directory does not exist.
     """
-    root = space.resolve(path)
-    if not root.is_dir():
-        raise ToolError(f"no such directory: {root}")
+    root = space.directory(path)
     rows: list[str] = []
-    _walk(root, depth, 1, rows)
+    _walk(space, root, depth, 1, rows)
     return render([str(root)] + rows, space.max_results, str(root))
 
 
@@ -187,7 +191,8 @@ def head(space: Workspace, path: str, lines: int = 10) -> str:
     Raises:
         ToolError: The file does not exist or cannot be read as text.
     """
-    return space.cut("\n".join(read_text(space, path).splitlines()[: max(lines, 1)]))
+    rows = read_text(space.resolve(path)).splitlines()
+    return cut("\n".join(rows[: max(lines, 1)]), space.max_output)
 
 
 def tail(space: Workspace, path: str, lines: int = 10) -> str:
@@ -199,7 +204,8 @@ def tail(space: Workspace, path: str, lines: int = 10) -> str:
     Raises:
         ToolError: The file does not exist or cannot be read as text.
     """
-    return space.cut("\n".join(read_text(space, path).splitlines()[-max(lines, 1):]))
+    rows = read_text(space.resolve(path)).splitlines()
+    return cut("\n".join(rows[-max(lines, 1) :]), space.max_output)
 
 
 def _describe(entry: Path) -> str:
@@ -212,7 +218,9 @@ def _describe(entry: Path) -> str:
         return f"{entry.name}  (unreadable)"
 
 
-def _walk(directory: Path, depth: int, level: int, rows: list[str]) -> None:
+def _walk(
+    space: Workspace, directory: Path, depth: int, level: int, rows: list[str]
+) -> None:
     """Collect tree rows for one directory level."""
     if level > depth:
         return
@@ -223,9 +231,11 @@ def _walk(directory: Path, depth: int, level: int, rows: list[str]) -> None:
     except OSError:
         return
     for entry in entries:
+        if not space.within(directory, entry):
+            continue
         rows.append(f"{TREE_INDENT * level}{entry.name}{'/' if entry.is_dir() else ''}")
         if entry.is_dir():
-            _walk(entry, depth, level + 1, rows)
+            _walk(space, entry, depth, level + 1, rows)
 
 
 def _transfer(space: Workspace, source: str, destination: str, move: bool) -> str:
@@ -244,7 +254,7 @@ def _transfer(space: Workspace, source: str, destination: str, move: bool) -> st
         if move:
             shutil.move(str(origin), str(target))
         elif origin.is_dir():
-            shutil.copytree(origin, target)
+            shutil.copytree(origin, target, symlinks=True)
         else:
             shutil.copy2(origin, target)
     except OSError as err:

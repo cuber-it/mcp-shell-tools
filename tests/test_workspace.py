@@ -1,4 +1,4 @@
-"""How paths are resolved and how limits are kept."""
+"""How paths are resolved, checked against the boundary, and searched."""
 
 from __future__ import annotations
 
@@ -6,13 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from mcp_shell_tools.workspace import (
-    OutsideBoundaryError,
-    ToolError,
-    Workspace,
-    read_text,
-    workspace_from,
-)
+from mcp_shell_tools import OutsideBoundaryError, ToolError, Workspace, workspace_from
 
 
 def test_a_relative_path_is_taken_from_the_working_directory(
@@ -33,70 +27,108 @@ def test_without_roots_everything_is_allowed(space: Workspace) -> None:
     assert space.resolve("/etc") == Path("/etc")
 
 
-def test_a_path_inside_the_roots_is_allowed(tmp_path: Path) -> None:
-    space = Workspace(working_dir=tmp_path, allowed_roots=(tmp_path,))
+def test_a_path_inside_the_roots_is_allowed(bounded: Workspace) -> None:
+    inside = bounded.working_dir
 
-    assert space.resolve("below/file") == tmp_path / "below/file"
-
-
-def test_the_root_itself_is_allowed(tmp_path: Path) -> None:
-    space = Workspace(working_dir=tmp_path, allowed_roots=(tmp_path,))
-
-    assert space.resolve(str(tmp_path)) == tmp_path
+    assert bounded.resolve("below/file") == inside / "below/file"
 
 
-def test_a_path_outside_the_roots_is_refused(tmp_path: Path) -> None:
-    space = Workspace(working_dir=tmp_path, allowed_roots=(tmp_path,))
+def test_the_root_itself_is_allowed(bounded: Workspace) -> None:
+    assert bounded.resolve(str(bounded.working_dir)) == bounded.working_dir
+
+
+def test_a_path_outside_the_roots_is_refused(bounded: Workspace) -> None:
+    with pytest.raises(OutsideBoundaryError):
+        bounded.resolve("/etc/hostname")
+
+
+def test_climbing_out_of_the_roots_is_refused(bounded: Workspace) -> None:
+    with pytest.raises(OutsideBoundaryError):
+        bounded.resolve("../outside.txt")
+
+
+def test_a_link_out_of_the_roots_is_refused(bounded: Workspace) -> None:
+    (bounded.working_dir / "link").symlink_to(bounded.working_dir.parent)
 
     with pytest.raises(OutsideBoundaryError):
-        space.resolve("/etc/hostname")
+        bounded.resolve("link/outside.txt")
 
 
-def test_climbing_out_of_the_roots_is_refused(tmp_path: Path) -> None:
-    space = Workspace(working_dir=tmp_path, allowed_roots=(tmp_path,))
+def test_an_existing_path_is_returned(space: Workspace, tmp_path: Path) -> None:
+    (tmp_path / "a.txt").write_text("x", encoding="utf-8")
 
-    with pytest.raises(OutsideBoundaryError):
-        space.resolve("../..")
-
-
-def test_short_output_is_left_alone(space: Workspace) -> None:
-    assert space.cut("hello") == "hello"
+    assert space.existing("a.txt") == tmp_path / "a.txt"
 
 
-def test_long_output_is_cut_and_says_so(tmp_path: Path) -> None:
-    space = Workspace(working_dir=tmp_path, max_output=10)
-
-    cut = space.cut("x" * 25)
-
-    assert cut.startswith("x" * 10)
-    assert "15 more characters" in cut
+def test_a_missing_path_is_refused(space: Workspace) -> None:
+    with pytest.raises(ToolError, match="no such path"):
+        space.existing("nowhere")
 
 
-def test_output_at_the_limit_is_not_cut(tmp_path: Path) -> None:
-    space = Workspace(working_dir=tmp_path, max_output=5)
-
-    assert space.cut("12345") == "12345"
-
-
-def test_reading_a_missing_file_is_refused(space: Workspace) -> None:
-    with pytest.raises(ToolError):
-        read_text(space, "nowhere.txt")
-
-
-def test_reading_a_directory_is_refused(space: Workspace, tmp_path: Path) -> None:
+def test_a_directory_is_returned(space: Workspace, tmp_path: Path) -> None:
     (tmp_path / "adir").mkdir()
 
-    with pytest.raises(ToolError):
-        read_text(space, "adir")
+    assert space.directory("adir") == tmp_path / "adir"
 
 
-def test_reading_something_that_is_not_text_is_refused(
+def test_a_file_is_not_a_directory(space: Workspace, tmp_path: Path) -> None:
+    (tmp_path / "a.txt").write_text("x", encoding="utf-8")
+
+    with pytest.raises(ToolError, match="no such directory"):
+        space.directory("a.txt")
+
+
+def test_globbing_returns_sorted_hits(space: Workspace, tmp_path: Path) -> None:
+    for name in ("b.py", "a.py"):
+        (tmp_path / name).write_text("x", encoding="utf-8")
+
+    assert space.glob(tmp_path, "*.py") == [tmp_path / "a.py", tmp_path / "b.py"]
+
+
+def test_globbing_leaves_out_skipped_directories_below_the_root(
     space: Workspace, tmp_path: Path
 ) -> None:
-    (tmp_path / "binary").write_bytes(b"\xff\xfe\x00\x01")
+    (tmp_path / ".venv").mkdir()
+    (tmp_path / ".venv/a.py").write_text("x", encoding="utf-8")
 
-    with pytest.raises(ToolError):
-        read_text(space, "binary")
+    assert space.glob(tmp_path, "**/*.py") == []
+
+
+def test_globbing_a_root_inside_a_skipped_directory_finds(tmp_path: Path) -> None:
+    root = tmp_path / ".venv" / "project"
+    root.mkdir(parents=True)
+    (root / "a.py").write_text("x", encoding="utf-8")
+
+    assert Workspace(working_dir=root).glob(root, "*.py") == [root / "a.py"]
+
+
+def test_globbing_does_not_climb_out_of_the_roots(bounded: Workspace) -> None:
+    hits = bounded.glob(bounded.working_dir, "../*")
+
+    assert [hit.name for hit in hits] == ["inside"]
+
+
+def test_globbing_leaves_out_links_out_of_the_roots(bounded: Workspace) -> None:
+    inside = bounded.working_dir
+    (inside / "link.txt").symlink_to(inside.parent / "outside.txt")
+
+    assert bounded.glob(inside, "*") == []
+
+
+def test_without_roots_a_pattern_may_climb(tmp_path: Path) -> None:
+    inside = tmp_path / "inside"
+    inside.mkdir()
+    (tmp_path / "beside.txt").write_text("x", encoding="utf-8")
+
+    hits = Workspace(working_dir=inside).glob(inside, "../*.txt")
+
+    assert [hit.name for hit in hits] == ["beside.txt"]
+
+
+@pytest.mark.parametrize("pattern", ["", "/etc/*"])
+def test_an_unusable_pattern_is_refused(space: Workspace, pattern: str) -> None:
+    with pytest.raises(ToolError, match="not a usable pattern"):
+        space.glob(space.working_dir, pattern)
 
 
 def test_configuration_is_read(tmp_path: Path) -> None:

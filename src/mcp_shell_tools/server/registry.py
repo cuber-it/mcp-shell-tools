@@ -1,42 +1,51 @@
-"""Publishing the tools on an MCP server.
+"""The tools as a catalogue a server can publish.
 
-What arrives as ``server`` is anything whose ``tool()`` returns a decorator —
-the SDK's ``MCPServer``, or any other registrar shaped like it. Nothing here
-imports the SDK, so this module can be driven and tested without it.
+:func:`catalogue` binds every tool to one shared workspace and returns them by
+the name they are published under. It knows no server and imports no SDK:
+whatever publishes the catalogue, the MCP SDK in :mod:`.app` or a server
+library of our own, takes it from here.
 
-The functions below are thin on purpose: each binds the shared workspace and
-hands the work to a module that knows nothing about MCP. **The docstring of a
-wrapper is the description that lands in the client's catalogue** — it is read,
-not merely stored.
+The functions below are thin on purpose: each binds the workspace and hands the
+work to a module that knows nothing about MCP. **The docstring of a wrapper is
+the description that lands in the client's catalogue** — it is read, not
+merely stored. Its signature becomes the input schema.
 
-Tool names carry no prefix. A proxy or a deployment may put one in front of
-them, which is why the same code can be published under any name.
+Names carry no prefix. Putting one in front is the publisher's business.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
 
 from mcp_shell_tools import edit, files, find, notes, place, run, system
 from mcp_shell_tools.workspace import Workspace
 
-
-def register(server: Any, space: Workspace) -> None:
-    """Publish every tool on the server, all sharing one workspace."""
-    _register_files(server, space)
-    _register_inspecting(server, space)
-    _register_editing(server, space)
-    _register_finding(server, space)
-    _register_running(server, space)
-    _register_place(server, space)
-    _register_notes(server, space)
-    _register_system(server, space)
+Tool = Callable[..., str]
+Catalogue = dict[str, Tool]
 
 
-def _register_files(server: Any, space: Workspace) -> None:
-    """Publish the tools that read and move files."""
+def catalogue(space: Workspace) -> Catalogue:
+    """Return every tool bound to the workspace, by its published name."""
+    return {
+        **_files(space),
+        **_inspecting(space),
+        **_editing(space),
+        **_finding(space),
+        **_running(space),
+        **_place(space),
+        **_notes(space),
+        **_system(space),
+    }
 
-    @server.tool()
+
+def _named(*tools: Tool) -> Catalogue:
+    """Key each tool by its own function name."""
+    return {tool.__name__: tool for tool in tools}
+
+
+def _files(space: Workspace) -> Catalogue:
+    """Bind the tools that read and move files."""
+
     def file_read(path: str, start: int = 0, end: int = 0) -> str:
         """Read a text file and return its content.
 
@@ -48,7 +57,6 @@ def _register_files(server: Any, space: Workspace) -> None:
         """
         return files.file_read(space, path, start, end)
 
-    @server.tool()
     def file_write(path: str, content: str) -> str:
         """Write text to a file, replacing whatever was there.
 
@@ -60,7 +68,6 @@ def _register_files(server: Any, space: Workspace) -> None:
         """
         return files.file_write(space, path, content)
 
-    @server.tool()
     def file_append(path: str, content: str) -> str:
         """Add text to the end of a file, creating it if it does not exist.
 
@@ -68,7 +75,6 @@ def _register_files(server: Any, space: Workspace) -> None:
         """
         return files.file_append(space, path, content)
 
-    @server.tool()
     def file_list(path: str = ".") -> str:
         """List a directory, directories first, with file sizes.
 
@@ -76,7 +82,6 @@ def _register_files(server: Any, space: Workspace) -> None:
         """
         return files.file_list(space, path)
 
-    @server.tool()
     def file_delete(path: str) -> str:
         """Delete a file, or a directory with everything below it.
 
@@ -86,7 +91,6 @@ def _register_files(server: Any, space: Workspace) -> None:
         """
         return files.file_delete(space, path)
 
-    @server.tool()
     def file_move(source: str, destination: str) -> str:
         """Move or rename a file or directory.
 
@@ -94,15 +98,15 @@ def _register_files(server: Any, space: Workspace) -> None:
         """
         return files.file_move(space, source, destination)
 
-    @server.tool()
     def file_copy(source: str, destination: str) -> str:
         """Copy a file, or a directory with everything below it.
+
+        Symlinks inside a copied directory stay links.
 
         Auf Deutsch: Datei kopieren, duplizieren, Ordner kopieren, Sicherung.
         """
         return files.file_copy(space, source, destination)
 
-    @server.tool()
     def tree(path: str = ".", depth: int = 3) -> str:
         """Show a directory and what is below it, down to the given depth.
 
@@ -113,11 +117,21 @@ def _register_files(server: Any, space: Workspace) -> None:
         """
         return files.tree(space, path, depth)
 
+    return _named(
+        file_read,
+        file_write,
+        file_append,
+        file_list,
+        file_delete,
+        file_move,
+        file_copy,
+        tree,
+    )
 
-def _register_inspecting(server: Any, space: Workspace) -> None:
-    """Publish the tools that look at a single file without changing it."""
 
-    @server.tool()
+def _inspecting(space: Workspace) -> Catalogue:
+    """Bind the tools that look at a single file without changing it."""
+
     def file_info(path: str) -> str:
         """Report what is known about a file: size, rights, owner, times.
 
@@ -125,7 +139,6 @@ def _register_inspecting(server: Any, space: Workspace) -> None:
         """
         return files.file_info(space, path)
 
-    @server.tool()
     def head(path: str, lines: int = 10) -> str:
         """Return the first lines of a file.
 
@@ -133,7 +146,6 @@ def _register_inspecting(server: Any, space: Workspace) -> None:
         """
         return files.head(space, path, lines)
 
-    @server.tool()
     def tail(path: str, lines: int = 10) -> str:
         """Return the last lines of a file.
 
@@ -143,11 +155,12 @@ def _register_inspecting(server: Any, space: Workspace) -> None:
         """
         return files.tail(space, path, lines)
 
+    return _named(file_info, head, tail)
 
-def _register_editing(server: Any, space: Workspace) -> None:
-    """Publish the tools that change text in place."""
 
-    @server.tool()
+def _editing(space: Workspace) -> Catalogue:
+    """Bind the tools that change text in place."""
+
     def str_replace(path: str, old: str, new: str) -> str:
         """Replace one passage in a file with another.
 
@@ -159,7 +172,6 @@ def _register_editing(server: Any, space: Workspace) -> None:
         """
         return edit.str_replace(space, path, old, new)
 
-    @server.tool()
     def diff_preview(path: str, content: str) -> str:
         """Show what writing this content would change, without writing it.
 
@@ -169,7 +181,6 @@ def _register_editing(server: Any, space: Workspace) -> None:
         """
         return edit.diff_preview(space, path, content)
 
-    @server.tool()
     def find_replace(
         old: str,
         new: str,
@@ -180,17 +191,18 @@ def _register_editing(server: Any, space: Workspace) -> None:
         """Replace a passage across many files, dry run by default.
 
         Nothing is written until apply is true, so the change can be read
-        before it happens.
+        before it happens. The run stops at the result limit and says so.
 
         Auf Deutsch: überall ersetzen, in allen Dateien ändern, Massenersetzung.
         """
         return edit.find_replace(space, old, new, path, glob, apply=apply)
 
+    return _named(str_replace, diff_preview, find_replace)
 
-def _register_finding(server: Any, space: Workspace) -> None:
-    """Publish the tools that look for files and for text."""
 
-    @server.tool()
+def _finding(space: Workspace) -> Catalogue:
+    """Bind the tools that look for files and for text."""
+
     def glob_search(pattern: str, path: str = ".") -> str:
         """Find files whose path matches a glob pattern.
 
@@ -200,7 +212,6 @@ def _register_finding(server: Any, space: Workspace) -> None:
         """
         return find.glob_search(space, pattern, path)
 
-    @server.tool()
     def grep(pattern: str, path: str = ".", glob: str = "**/*") -> str:
         """Find lines matching a regular expression.
 
@@ -211,13 +222,12 @@ def _register_finding(server: Any, space: Workspace) -> None:
         """
         return find.grep(space, pattern, path, glob)
 
+    return _named(glob_search, grep)
 
-def _register_running(server: Any, space: Workspace) -> None:
-    """Publish the tools that run commands."""
 
-    # Published as "exec"; the function is named differently so it does not
-    # shadow the built-in of that name.
-    @server.tool(name="exec")
+def _running(space: Workspace) -> Catalogue:
+    """Bind the tools that run commands."""
+
     def run_command(command: str, timeout: float = 0) -> str:
         """Run a shell command in the working directory.
 
@@ -229,7 +239,6 @@ def _register_running(server: Any, space: Workspace) -> None:
         """
         return run.shell_exec(space, command, timeout)
 
-    @server.tool()
     def env(name: str = "") -> str:
         """Show the environment the commands run in, or one variable of it.
 
@@ -237,7 +246,6 @@ def _register_running(server: Any, space: Workspace) -> None:
         """
         return run.env(space, name)
 
-    @server.tool()
     def which(name: str) -> str:
         """Report where a command is found, following the current PATH.
 
@@ -245,7 +253,6 @@ def _register_running(server: Any, space: Workspace) -> None:
         """
         return run.which(space, name)
 
-    @server.tool()
     def set_env(name: str, value: str) -> str:
         """Set an environment variable for the commands that follow.
 
@@ -255,11 +262,14 @@ def _register_running(server: Any, space: Workspace) -> None:
         """
         return run.set_env(space, name, value)
 
+    # Published as "exec"; the function is named differently so it does not
+    # shadow the built-in of that name.
+    return {"exec": run_command, **_named(env, which, set_env)}
 
-def _register_place(server: Any, space: Workspace) -> None:
-    """Publish the tools about where work happens."""
 
-    @server.tool()
+def _place(space: Workspace) -> Catalogue:
+    """Bind the tools about where work happens."""
+
     def cwd() -> str:
         """Return the directory the tools are working in.
 
@@ -267,7 +277,6 @@ def _register_place(server: Any, space: Workspace) -> None:
         """
         return place.cwd(space)
 
-    @server.tool()
     def cd(path: str) -> str:
         """Change the directory the tools work in.
 
@@ -278,7 +287,6 @@ def _register_place(server: Any, space: Workspace) -> None:
         """
         return place.cd(space, path)
 
-    @server.tool()
     def project_context(path: str = ".") -> str:
         """Return what a directory's CLAUDE.md says, if there is one.
 
@@ -286,11 +294,12 @@ def _register_place(server: Any, space: Workspace) -> None:
         """
         return place.project_context(space, path)
 
+    return _named(cwd, cd, project_context)
 
-def _register_notes(server: Any, space: Workspace) -> None:
-    """Publish the tools that remember things."""
 
-    @server.tool()
+def _notes(space: Workspace) -> Catalogue:
+    """Bind the tools that remember things."""
+
     def memory_add(note: str) -> str:
         """Keep a note for the rest of this server's run.
 
@@ -301,7 +310,6 @@ def _register_notes(server: Any, space: Workspace) -> None:
         """
         return notes.memory_add(space, note)
 
-    @server.tool()
     def memory_show() -> str:
         """Return the notes kept so far, oldest first.
 
@@ -309,7 +317,6 @@ def _register_notes(server: Any, space: Workspace) -> None:
         """
         return notes.memory_show(space)
 
-    @server.tool()
     def memory_clear() -> str:
         """Drop every note kept so far.
 
@@ -317,7 +324,6 @@ def _register_notes(server: Any, space: Workspace) -> None:
         """
         return notes.memory_clear(space)
 
-    @server.tool()
     def session_save(name: str, summary: str = "") -> str:
         """Write the current notes and working directory to disk under a name.
 
@@ -325,7 +331,6 @@ def _register_notes(server: Any, space: Workspace) -> None:
         """
         return notes.session_save(space, name, summary)
 
-    @server.tool()
     def session_resume(name: str) -> str:
         """Load a saved session: its notes and its working directory.
 
@@ -333,7 +338,6 @@ def _register_notes(server: Any, space: Workspace) -> None:
         """
         return notes.session_resume(space, name)
 
-    @server.tool()
     def session_list() -> str:
         """List the saved sessions, most recently saved first.
 
@@ -341,11 +345,19 @@ def _register_notes(server: Any, space: Workspace) -> None:
         """
         return notes.session_list(space)
 
+    return _named(
+        memory_add,
+        memory_show,
+        memory_clear,
+        session_save,
+        session_resume,
+        session_list,
+    )
 
-def _register_system(server: Any, space: Workspace) -> None:
-    """Publish the tools that look at the machine itself."""
 
-    @server.tool()
+def _system(space: Workspace) -> Catalogue:
+    """Bind the tools that look at the machine itself."""
+
     def ps(name: str = "") -> str:
         """List running processes, biggest by memory first.
 
@@ -355,7 +367,6 @@ def _register_system(server: Any, space: Workspace) -> None:
         """
         return system.ps(space, name)
 
-    @server.tool()
     def sysinfo() -> str:
         """Report the machine: system, CPU, memory, disk, uptime, load.
 
@@ -363,7 +374,6 @@ def _register_system(server: Any, space: Workspace) -> None:
         """
         return system.sysinfo(space)
 
-    @server.tool()
     def port_check(port: int = 0) -> str:
         """Say what listens on a port, or list everything that listens.
 
@@ -371,10 +381,11 @@ def _register_system(server: Any, space: Workspace) -> None:
         """
         return system.port_check(space, port)
 
-    @server.tool()
     def disk_usage(path: str = ".", depth: int = 1) -> str:
         """Report how much space a directory and its subdirectories take.
 
         Auf Deutsch: Speicherplatz, wie voll, Plattenbelegung, was ist groß.
         """
         return system.disk_usage(space, path, depth)
+
+    return _named(ps, sysinfo, port_check, disk_usage)

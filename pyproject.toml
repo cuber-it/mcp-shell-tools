@@ -24,7 +24,7 @@ server = ["mcp>=2,<3"]
 dev = ["pytest", "ruff", "pylint", "mcp>=2,<3"]
 
 [project.scripts]
-mcp-shell-tools = "mcp_shell_tools.server:main"
+mcp-shell-tools = "mcp_shell_tools.server.app:main"
 
 [project.urls]
 Homepage = "https://www.uc-it.de"
@@ -47,10 +47,10 @@ max-complexity = 10
 convention = "pep257"
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
-"mcp".msg = "Only mcp_shell_tools.server may import the SDK."
+"mcp".msg = "Only mcp_shell_tools.server.app may import the SDK."
 
 [tool.ruff.lint.per-file-ignores]
-"src/mcp_shell_tools/server.py" = ["TID251"]
+"src/mcp_shell_tools/server/app.py" = ["TID251"]
 # Test names carry the sentence; a docstring would only repeat them.
 "tests/*" = ["D103"]
 
@@ -58,8 +58,6 @@ convention = "pep257"
 max-line-length = 88
 
 [tool.pylint.design]
-# A stand-in with a single method is the point, not a smell.
-min-public-methods = 1
 # find_replace takes what it replaces, where to look, and whether to write.
 # Folding those into an object would hide the signature the caller reads.
 max-args = 6

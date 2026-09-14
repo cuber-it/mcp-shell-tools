@@ -9,7 +9,9 @@ from pathlib import Path
 
 import psutil
 
-from mcp_shell_tools.workspace import ToolError, Workspace, render, size
+from mcp_shell_tools.errors import ToolError
+from mcp_shell_tools.output import cut, render, size
+from mcp_shell_tools.workspace import Workspace
 
 
 def ps(space: Workspace, name: str = "") -> str:
@@ -48,7 +50,7 @@ def ps(space: Workspace, name: str = "") -> str:
     rows.sort(key=lambda row: row[0], reverse=True)
     header = f"{'PID':>7}  {'USER':<12} {'MEMORY':>9}  NAME"
     listing = [header] + [row[1] for row in rows]
-    return space.cut(render(listing, space.max_results + 1, empty))
+    return cut(render(listing, space.max_results + 1, empty), space.max_output)
 
 
 def sysinfo(space: Workspace) -> str:
@@ -82,6 +84,9 @@ def port_check(space: Workspace, port: int = 0) -> str:
 
     Returns:
         One line per listening socket: address, port, pid, process.
+
+    Raises:
+        ToolError: Listening sockets cannot be read with the current rights.
     """
     try:
         connections = psutil.net_connections(kind="inet")
@@ -107,7 +112,7 @@ def port_check(space: Workspace, port: int = 0) -> str:
 
     rows.sort()
     header = f"{'ADDRESS':<28} {'PORT':>6}  {'PID':>7}  PROCESS"
-    return space.cut(render([header] + rows, space.max_results + 1, empty))
+    return cut(render([header] + rows, space.max_results + 1, empty), space.max_output)
 
 
 def disk_usage(space: Workspace, path: str = ".", depth: int = 1) -> str:
@@ -119,10 +124,7 @@ def disk_usage(space: Workspace, path: str = ".", depth: int = 1) -> str:
     Raises:
         ToolError: The path does not exist or is not a directory.
     """
-    target = space.resolve(path)
-    if not target.is_dir():
-        raise ToolError(f"not a directory: {target}")
-
+    target = space.directory(path)
     usage = shutil.disk_usage(target)
     lines = [
         f"filesystem at {target}: {size(usage.used)} used, "
@@ -137,7 +139,7 @@ def disk_usage(space: Workspace, path: str = ".", depth: int = 1) -> str:
         if entry != target
     ]
     body = render(rows, space.max_results, "(no subdirectories)")
-    return space.cut("\n".join(lines + [body]))
+    return cut("\n".join(lines + [body]), space.max_output)
 
 
 def _measure(target: Path, depth: int) -> dict[Path, int]:

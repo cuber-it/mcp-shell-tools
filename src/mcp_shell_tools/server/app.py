@@ -1,9 +1,9 @@
-"""The server: the whole tool set over stdio or HTTP.
+"""The server: the whole tool set over stdio or HTTP, through the MCP SDK.
 
-This is the only module that touches the MCP SDK. Everything under it — the
-tool modules and :func:`mcp_shell_tools.registry.register` — stays free of it,
-so a change in the SDK is felt here and nowhere else. The SDK is an optional
-dependency: install ``mcp-shell-tools[server]`` to get it.
+This is the only module that imports the SDK. It takes the catalogue from
+:mod:`mcp_shell_tools.server.registry` and publishes it, so a change in the SDK
+is felt here and nowhere else. The SDK is an optional dependency: install
+``mcp-shell-tools[server]`` to get it.
 """
 
 from __future__ import annotations
@@ -11,13 +11,13 @@ from __future__ import annotations
 import argparse
 import functools
 import sys
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from mcp_shell_tools import __version__
-from mcp_shell_tools.registry import register
-from mcp_shell_tools.workspace import ToolError, Workspace, workspace_from
+from mcp_shell_tools.errors import ToolError
+from mcp_shell_tools.server.registry import Tool, catalogue
+from mcp_shell_tools.workspace import Workspace, workspace_from
 
 INSTRUCTIONS = (
     "Workstation tools: files, editing, searching, running commands, notes "
@@ -25,43 +25,28 @@ INSTRUCTIONS = (
 )
 
 
-class _Anticipated:
-    """Passes registrations on, turning our refusals into the SDK's.
+def _anticipated(tool: Tool, refusal: type[Exception]) -> Tool:
+    """Wrap a tool so that its refusals reach the caller with their reason.
 
     The SDK tells a deliberate refusal from a crash by the exception class:
     its own ``ToolError`` reaches the caller carrying its message, while
     anything else is a crash and the caller is told no more than "Error
-    executing tool <name>". The tools raise their own ``ToolError``, which
-    would land in that second case — every carefully worded refusal would
-    arrive blank. This translates them, and only them: a real crash stays a
-    crash.
+    executing tool <name>". The tools raise our own ``ToolError``, which would
+    land in that second case. This translates those, and only those: a real
+    crash stays a crash.
+
+    ``functools.wraps`` carries name, docstring and signature over, and the
+    SDK builds description and input schema from them.
     """
 
-    def __init__(self, server: Any, refusal: type[Exception]) -> None:
-        """Bind to the server being wrapped and the class to raise.
+    @functools.wraps(tool)
+    def translated(*args: Any, **kwargs: Any) -> str:
+        try:
+            return tool(*args, **kwargs)
+        except ToolError as err:
+            raise refusal(str(err)) from err
 
-        Args:
-            server: What the registrations are passed on to.
-            refusal: The SDK's exception for an anticipated failure.
-        """
-        self._server = server
-        self._refusal = refusal
-
-    def tool(self, *args: Any, **kwargs: Any) -> Callable[..., Any]:
-        """Return a decorator that registers the translated function."""
-        decorate = self._server.tool(*args, **kwargs)
-
-        def keep(handler: Callable[..., str]) -> Callable[..., str]:
-            @functools.wraps(handler)
-            def translated(*called: Any, **named: Any) -> str:
-                try:
-                    return handler(*called, **named)
-                except ToolError as err:
-                    raise self._refusal(str(err)) from err
-
-            return decorate(translated)
-
-        return keep
+    return translated
 
 
 def build(space: Workspace) -> Any:
@@ -80,8 +65,7 @@ def build(space: Workspace) -> Any:
         from mcp.server.mcpserver.exceptions import ToolError as AnticipatedError
     except ImportError:
         sys.exit(
-            "The server needs the MCP SDK:\n"
-            "    pip install 'mcp-shell-tools[server]'"
+            "The server needs the MCP SDK:\n    pip install 'mcp-shell-tools[server]'"
         )
 
     server = MCPServer(
@@ -89,7 +73,8 @@ def build(space: Workspace) -> Any:
         version=__version__,
         instructions=INSTRUCTIONS,
     )
-    register(_Anticipated(server, AnticipatedError), space)
+    for name, tool in catalogue(space).items():
+        server.add_tool(_anticipated(tool, AnticipatedError), name=name)
     return server
 
 
@@ -124,9 +109,7 @@ def parse(argv: list[str] | None = None) -> argparse.Namespace:
         help="Confine the tools to this directory; repeatable. "
         "Without it they may touch the whole disk.",
     )
-    parser.add_argument(
-        "--state-dir", default="", help="Where sessions are written"
-    )
+    parser.add_argument("--state-dir", default="", help="Where sessions are written")
     return parser.parse_args(argv)
 
 

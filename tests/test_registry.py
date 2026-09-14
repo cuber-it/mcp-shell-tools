@@ -1,19 +1,17 @@
-"""What the registry publishes on a server.
+"""What the catalogue hands a server.
 
-Driven through a stand-in registrar, so these tests need no SDK — which is the
-point of keeping the registration free of it.
+No server is involved: the catalogue is plain data, which is the point of
+keeping it free of any server library.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 import pytest
 
-from mcp_shell_tools.registry import register
-from mcp_shell_tools.workspace import ToolError, Workspace
+from mcp_shell_tools import ToolError, Workspace
+from mcp_shell_tools.server.registry import Catalogue, catalogue
 
 EXPECTED = {
     "file_read",
@@ -52,131 +50,55 @@ EXPECTED = {
 }
 
 
-class Registrar:
-    """Collects what is published, the way a server would.
-
-    Attributes:
-        tools: The published functions by the name they were published under.
-    """
-
-    def __init__(self) -> None:
-        """Start out with nothing published."""
-        self.tools: dict[str, Callable[..., Any]] = {}
-
-    def tool(
-        self, name: str | None = None, **_: Any
-    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        """Return the decorator that records the function.
-
-        Args:
-            name: Name to publish under, or None for the function's own name.
-
-        Returns:
-            The decorator.
-        """
-
-        def decorate(handler: Callable[..., Any]) -> Callable[..., Any]:
-            self.tools[name or handler.__name__] = handler
-            return handler
-
-        return decorate
-
-
 @pytest.fixture
-def registrar() -> Registrar:
-    """Return a registrar with nothing published yet."""
-    return Registrar()
+def tools(space: Workspace) -> Catalogue:
+    """Return the catalogue bound to a fresh workspace."""
+    return catalogue(space)
 
 
-@pytest.fixture
-def space(tmp_path: Path) -> Workspace:
-    """Return a workspace rooted in a fresh temporary directory."""
-    return Workspace(working_dir=tmp_path, state_dir=tmp_path / "state")
+def test_the_whole_set_is_in_the_catalogue(tools: Catalogue) -> None:
+    assert set(tools) == EXPECTED
 
 
-def test_the_whole_set_is_published(registrar: Registrar, space: Workspace) -> None:
-    register(registrar, space)
-
-    assert set(registrar.tools) == EXPECTED
+def test_every_tool_carries_a_description(tools: Catalogue) -> None:
+    assert [name for name, tool in tools.items() if not tool.__doc__] == []
 
 
-def test_no_name_carries_a_prefix(registrar: Registrar, space: Workspace) -> None:
-    register(registrar, space)
-
-    assert not [name for name in registrar.tools if name.startswith("shell_")]
-
-
-def test_every_tool_carries_a_description(
-    registrar: Registrar, space: Workspace
-) -> None:
-    register(registrar, space)
-
-    without = [name for name, handler in registrar.tools.items() if not handler.__doc__]
-
-    assert without == []
-
-
-def test_every_description_carries_the_german_words(
-    registrar: Registrar, space: Workspace
-) -> None:
-    register(registrar, space)
-
+def test_every_description_carries_the_german_words(tools: Catalogue) -> None:
     without = [
-        name
-        for name, handler in registrar.tools.items()
-        if "Auf Deutsch:" not in (handler.__doc__ or "")
+        name for name, tool in tools.items() if "Auf Deutsch:" not in tool.__doc__
     ]
 
     assert without == []
 
 
-def test_the_published_tools_do_their_work(
-    registrar: Registrar, space: Workspace, tmp_path: Path
-) -> None:
-    register(registrar, space)
+def test_the_tools_do_their_work(tools: Catalogue, tmp_path: Path) -> None:
+    tools["file_write"]("note.txt", "content")
 
-    registrar.tools["file_write"]("note.txt", "content")
-
-    assert registrar.tools["file_read"]("note.txt") == "content"
+    assert tools["file_read"]("note.txt") == "content"
     assert (tmp_path / "note.txt").is_file()
 
 
-def test_running_a_command_works_through_the_registrar(
-    registrar: Registrar, space: Workspace
-) -> None:
-    register(registrar, space)
-
-    assert "hello" in registrar.tools["exec"]("echo hello")
+def test_exec_runs_a_command(tools: Catalogue) -> None:
+    assert tools["exec"]("echo hello") == "hello\n"
 
 
 def test_the_tools_share_one_workspace(
-    registrar: Registrar, space: Workspace, tmp_path: Path
+    tools: Catalogue, space: Workspace, tmp_path: Path
 ) -> None:
     (tmp_path / "below").mkdir()
-    register(registrar, space)
 
-    registrar.tools["cd"]("below")
+    tools["cd"]("below")
 
-    assert registrar.tools["cwd"]() == str(tmp_path / "below")
+    assert tools["cwd"]() == str(tmp_path / "below")
     assert space.working_dir == tmp_path / "below"
 
 
-def test_a_refusal_reaches_the_caller(
-    registrar: Registrar, space: Workspace
-) -> None:
-    register(registrar, space)
-
+def test_a_refusal_reaches_the_caller(tools: Catalogue) -> None:
     with pytest.raises(ToolError):
-        registrar.tools["file_read"]("nowhere.txt")
+        tools["file_read"]("nowhere.txt")
 
 
-def test_the_boundary_holds_through_the_registrar(
-    registrar: Registrar, tmp_path: Path
-) -> None:
-    inside = tmp_path / "inside"
-    inside.mkdir()
-    space = Workspace(working_dir=inside, allowed_roots=(inside,))
-    register(registrar, space)
-
-    with pytest.raises(ToolError):
-        registrar.tools["file_read"]("/etc/hostname")
+def test_the_boundary_holds_through_the_catalogue(bounded: Workspace) -> None:
+    with pytest.raises(ToolError, match="outside the allowed roots"):
+        catalogue(bounded)["file_read"]("/etc/hostname")

@@ -19,8 +19,8 @@ from typing import Any
 
 import pytest
 
-from mcp_shell_tools import server
-from mcp_shell_tools.workspace import Workspace
+from mcp_shell_tools import Workspace
+from mcp_shell_tools.server import app
 
 MCP = pytest.importorskip("mcp")
 
@@ -29,7 +29,7 @@ CURRENT_REVISION = "2026-07-28"
 
 def served(space: Workspace, work: Callable[[Any], Awaitable[Any]]) -> Any:
     """Run one piece of client work against a server on this workspace."""
-    built = server.build(space)
+    built = app.build(space)
 
     async def talk() -> Any:
         async with MCP.Client(built) as client:
