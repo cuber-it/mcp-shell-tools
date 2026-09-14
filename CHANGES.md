@@ -1,5 +1,12 @@
 # Changes
 
+## 246e3ec
+
+- The grant program is part of the package: `mcp_shell_tools.tools.mcp_shell_grant`,
+  run with `python -m`; `scripts/grant.sh` calls it that way
+- Refusals name `scripts/grant.sh` in a checkout and the `-m` call with the
+  server's interpreter otherwise
+
 ## 2f9b9cf
 
 - `file_delete`, `file_move` and `file_info` act on a symlink itself, not on its
