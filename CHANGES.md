@@ -1,5 +1,14 @@
 # Changes
 
+## 8.1.0 (49e4e23)
+
+- `/tmp` is always within reach: reading, writing, deleting and moving there
+  need no root and no grant, in every mode
+- The tests keep their temporary directories in `.pytest-tmp` instead of
+  `/tmp`, so the refusals they expect are still refusals
+- The two grant tests that need a checkout are skipped when the package is
+  installed, so the test suite passes from the source archive
+
 ## e92651d
 
 - Package metadata for PyPI: description, keywords, classifiers, documentation
