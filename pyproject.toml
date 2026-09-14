@@ -1,27 +1,42 @@
 [build-system]
-requires = ["setuptools>=68"]
+# 77 is the first release that reads a license expression and license-files.
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-shell-tools"
 version = "8.0.0"
-description = "33 workstation tools — filesystem, editor, search, shell, notes, system"
+description = "Workstation tools for AI assistants, as a Python library and an MCP server"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Ulrich Cuber", email = "sonstige@uc-it.de" }]
-keywords = ["mcp", "shell", "filesystem", "tools", "workstation"]
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "shell",
+    "filesystem",
+    "tools",
+    "workstation",
+    "oauth",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
+    "Environment :: Console",
     "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development",
+    "Topic :: System :: Shells",
 ]
 dependencies = ["psutil>=5.9"]
 
 [project.optional-dependencies]
 server = ["mcp>=2,<3"]
-dev = ["pytest", "ruff", "pylint", "mcp>=2,<3"]
+dev = ["pytest", "ruff", "pylint", "build", "twine", "mcp>=2,<3"]
 
 [project.scripts]
 mcp-shell-tools = "mcp_shell_tools.server.app:main"
@@ -29,6 +44,8 @@ mcp-shell-tools = "mcp_shell_tools.server.app:main"
 [project.urls]
 Homepage = "https://www.uc-it.de"
 Repository = "https://github.com/cuber-it/mcp-shell-tools"
+Documentation = "https://github.com/cuber-it/mcp-shell-tools/tree/master/doc"
+Changelog = "https://github.com/cuber-it/mcp-shell-tools/blob/master/CHANGES.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]

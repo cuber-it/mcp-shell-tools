@@ -27,6 +27,27 @@ The tests need no network beyond the loopback interface. A few start the server
 or the grant program as a subprocess; the authentication tests run the server
 against a stand-in authorization server in `tests/loopback.py`.
 
+## Release
+
+1. Raise `version` in `pyproject.toml` and describe the change in `CHANGES.md`.
+2. Build into an empty directory and check both archives:
+
+   ```bash
+   .venv/bin/python -m build --outdir /tmp/mcp-shell-tools-dist
+   .venv/bin/python -m twine check --strict /tmp/mcp-shell-tools-dist/*
+   ```
+
+3. Upload with an API token of the PyPI account that owns `mcp-shell-tools`;
+   twine asks for it, the user name is `__token__`:
+
+   ```bash
+   .venv/bin/python -m twine upload /tmp/mcp-shell-tools-dist/*
+   ```
+
+The wheel holds the package only. The source archive also carries the tests,
+the documentation, `scripts/` and `CHANGES.md` (see `MANIFEST.in`), and the
+test suite passes from it.
+
 ## Layout
 
 ```text
