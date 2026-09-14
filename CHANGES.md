@@ -1,5 +1,11 @@
 # Changes
 
+## 37df37a
+
+- Refusals and the message for an unusable grant file name the absolute path of
+  `scripts/grant.sh` instead of the interpreter and `tools/mcp_shell_grant.py`
+- Server instructions and README point to `scripts/grant.sh`
+
 ## 2d8686b
 
 - `scripts/grant.sh` runs `tools/mcp_shell_grant.py` with the repository's
