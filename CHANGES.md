@@ -1,5 +1,17 @@
 # Changes
 
+## 2f9b9cf
+
+- `file_delete`, `file_move` and `file_info` act on a symlink itself, not on its
+  target; `Workspace.locate` resolves every directory on the way but the last
+  entry
+- `sysinfo` no longer reports a CPU share it cannot measure
+- An unusable `MCP_PORT` is refused with exit status 2 instead of a traceback
+- `grant.GRANT_SCRIPT` replaces `PROGRAM`; `grant_command()` is gone
+- Shared helpers for sorted directory entries and process and socket tables
+- Docstrings, server instructions and documentation without justifying
+  appendages
+
 ## fc916e4 — 8.0.0
 
 - Version 8.0.0: completely rewritten and revised
