@@ -1,7 +1,8 @@
 """Grants: raising or lowering the boundary from outside, for a limited time.
 
 A grant is a file in the server's state directory, written by the
-``mcp-shell-grant`` program on the host and never by the tools. The server
+grant program ``tools/mcp_shell_grant.py`` on the host and never by the
+tools. The server
 reads it at every check, so a grant takes effect at the next tool call and
 lapses when its time is up, without a restart.
 
@@ -19,7 +20,6 @@ over, because passing over it could lift a restriction it imposes.
 
 from __future__ import annotations
 
-import argparse
 import contextlib
 import json
 import re
@@ -33,13 +33,12 @@ from mcp_shell_tools.boundary import MODES, Boundary
 from mcp_shell_tools.errors import GrantError
 from mcp_shell_tools.output import span
 
-PROGRAM = "mcp-shell-grant"
+PROGRAM = Path(__file__).resolve().parents[2] / "tools" / "mcp_shell_grant.py"
 GRANT_FILE = "grant.json"
 DEFAULT_STATE_DIR = "~/.mcp-shell-tools"
 SUGGESTED_DURATION = "1h"
 DURATION = re.compile(r"(\d+)([smhd])")
 SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
-REFUSED = 2
 
 
 @dataclass(frozen=True)
@@ -225,121 +224,25 @@ def parse_duration(text: str) -> int:
     return int(match[1]) * SECONDS[match[2]]
 
 
+def grant_command() -> str:
+    """Return how the grant program is started on this host."""
+    return f"{sys.executable} {PROGRAM}"
+
+
 def hint(state_dir: Path | None, change: str) -> str:
     """Return how a refusal can be lifted, for the message that reports it."""
     if state_dir is None:
         return "grants need a server started with --state-dir"
     return (
-        f"a person on the host can allow it with: {PROGRAM} --state-dir "
+        f"a person on the host can allow it with: {grant_command()} --state-dir "
         f"{state_dir} set {change} --for {SUGGESTED_DURATION}"
     )
-
-
-def main(argv: list[str] | None = None) -> int:
-    """Set, show or remove the grant of a server.
-
-    Returns:
-        0 when done, 2 when the arguments or the grant file were refused.
-    """
-    args = _parser().parse_args(argv)
-    state_dir = Path(args.state_dir).expanduser().resolve()
-    try:
-        print(args.command(state_dir, args))
-    except GrantError as err:
-        print(f"{PROGRAM}: {err}", file=sys.stderr)
-        return REFUSED
-    return 0
-
-
-def _parser() -> argparse.ArgumentParser:
-    """Return the parser for the program's arguments."""
-    parser = argparse.ArgumentParser(
-        prog=PROGRAM,
-        description="Raise or lower the boundary of an mcp-shell-tools server "
-        "for a limited time.",
-    )
-    parser.add_argument(
-        "--state-dir",
-        default=DEFAULT_STATE_DIR,
-        help="state directory of the server (default: %(default)s)",
-    )
-    commands = parser.add_subparsers(required=True)
-    setting = commands.add_parser(
-        "set", help="write a grant, replacing any previous one"
-    )
-    setting.add_argument(
-        "--for", dest="duration", required=True, help="how long it holds: 30m, 2h, 1d"
-    )
-    setting.add_argument(
-        "--mode", choices=MODES, help="mode to use instead of the configured one"
-    )
-    setting.add_argument(
-        "--root", action="append", default=[], metavar="PATH", help="add a root"
-    )
-    setting.add_argument(
-        "--exec",
-        dest="execute",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="switch shell commands on or off",
-    )
-    setting.set_defaults(command=_set)
-    commands.add_parser("show", help="show the grant").set_defaults(command=_show)
-    commands.add_parser("reset", help="remove the grant").set_defaults(command=_reset)
-    return parser
-
-
-def _set(state_dir: Path, args: argparse.Namespace) -> str:
-    """Write the grant the arguments describe.
-
-    Raises:
-        GrantError: It changes nothing, the duration is unusable, or it cannot
-            be written.
-    """
-    if args.mode is None and not args.root and args.execute is None:
-        raise GrantError(
-            "a grant has to change something: give --mode, --root, --exec or --no-exec"
-        )
-    now = time.time()
-    grant = Grant(
-        until=now + parse_duration(args.duration),
-        mode=args.mode,
-        roots=tuple(Path(root).expanduser().resolve() for root in args.root),
-        execute=args.execute,
-    )
-    where = write_grant(state_dir, grant)
-    return f"{grant.describe(now)}; written to {where}"
-
-
-def _show(state_dir: Path, args: argparse.Namespace) -> str:
-    """Describe the grant of a state directory.
-
-    Raises:
-        GrantError: The grant file cannot be used.
-    """
-    del args
-    grant = read_grant(state_dir)
-    if grant is None:
-        return f"no grant in {state_dir}"
-    return grant.describe(time.time())
-
-
-def _reset(state_dir: Path, args: argparse.Namespace) -> str:
-    """Remove the grant of a state directory.
-
-    Raises:
-        GrantError: The grant file could not be removed.
-    """
-    del args
-    if remove_grant(state_dir):
-        return f"removed the grant in {state_dir}"
-    return f"no grant in {state_dir}"
 
 
 def _unusable(where: Path, reason: str) -> str:
     """Return the message for a grant file that stops every check."""
     return (
         f"the grant file {where} cannot be used ({reason}); every check is "
-        f"refused until it is fixed or removed with {PROGRAM} --state-dir "
+        f"refused until it is fixed or removed with {grant_command()} --state-dir "
         f"{where.parent} reset"
     )

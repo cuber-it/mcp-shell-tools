@@ -15,7 +15,12 @@ from typing import Any
 
 from mcp_shell_tools.boundary import DEFAULT_MODE, Access, Boundary
 from mcp_shell_tools.errors import NotPermittedError, OutsideBoundaryError, ToolError
-from mcp_shell_tools.grant import PROGRAM, boundary_in_force, grant_file, hint
+from mcp_shell_tools.grant import (
+    boundary_in_force,
+    grant_command,
+    grant_file,
+    hint,
+)
 
 SKIPPED = frozenset({".git", "__pycache__", ".venv", "node_modules", ".mypy_cache"})
 
@@ -70,8 +75,8 @@ class Workspace:
         resolved = candidate.resolve()
         if self._reaches_grant(resolved, access):
             raise NotPermittedError(
-                f"{resolved} holds the grant file, which only {PROGRAM} on the "
-                "host changes"
+                f"{resolved} holds the grant file, which only {grant_command()} "
+                "on the host changes"
             )
         if not self.current().admits(resolved, access):
             nearest = resolved if resolved.is_dir() else resolved.parent

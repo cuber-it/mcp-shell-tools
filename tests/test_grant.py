@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import stat
+import subprocess
+import sys
 import time
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -13,18 +17,28 @@ from mcp_shell_tools import Boundary, GrantError
 from mcp_shell_tools.grant import (
     GRANT_FILE,
     PROGRAM,
-    REFUSED,
     Grant,
     boundary_in_force,
     hint,
-    main,
     parse_duration,
     read_grant,
     write_grant,
 )
 
+TOOL = Path(__file__).resolve().parents[1] / "tools" / "mcp_shell_grant.py"
 HOME = Path("/home/someone")
 BASE = Boundary((HOME,), "guarded", execute=False)
+
+
+def _load_tool() -> ModuleType:
+    """Load the grant program from tools/ as a module."""
+    spec = importlib.util.spec_from_file_location("mcp_shell_grant", TOOL)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+tool = _load_tool()
 
 
 def later(seconds: float = 3600) -> float:
@@ -144,14 +158,32 @@ def test_a_failed_write_keeps_the_previous_grant(tmp_path: Path) -> None:
     assert remaining.mode == "open"
 
 
-def test_the_hint_names_the_program_and_the_change(tmp_path: Path) -> None:
+def test_the_hint_names_interpreter_program_and_change(tmp_path: Path) -> None:
     text = hint(tmp_path, "--exec")
 
-    assert f"{PROGRAM} --state-dir {tmp_path} set --exec --for 1h" in text
+    expected = f"{sys.executable} {TOOL} --state-dir {tmp_path} set --exec --for 1h"
+    assert expected in text
+
+
+def test_the_hint_points_at_the_program_in_tools() -> None:
+    assert PROGRAM == TOOL
+    assert PROGRAM.is_file()
 
 
 def test_without_a_state_directory_the_hint_says_what_is_missing() -> None:
     assert "--state-dir" in hint(None, "--exec")
+
+
+def test_the_program_runs_from_the_command_line(tmp_path: Path) -> None:
+    finished = subprocess.run(
+        [sys.executable, str(TOOL), "--state-dir", str(tmp_path), "show"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert finished.returncode == 0
+    assert f"no grant in {tmp_path}" in finished.stdout
 
 
 def test_set_writes_a_grant_that_is_in_force(
@@ -160,7 +192,7 @@ def test_set_writes_a_grant_that_is_in_force(
     extra = tmp_path / "extra"
     argv = ["--state-dir", str(tmp_path), "set", "--mode", "open"]
 
-    code = main([*argv, "--root", str(extra), "--exec", "--for", "2h"])
+    code = tool.main([*argv, "--root", str(extra), "--exec", "--for", "2h"])
 
     grant = read_grant(tmp_path)
     assert code == 0
@@ -171,7 +203,7 @@ def test_set_writes_a_grant_that_is_in_force(
 
 
 def test_set_can_switch_commands_off(tmp_path: Path) -> None:
-    main(["--state-dir", str(tmp_path), "set", "--no-exec", "--for", "1h"])
+    tool.main(["--state-dir", str(tmp_path), "set", "--no-exec", "--for", "1h"])
 
     grant = read_grant(tmp_path)
     assert grant is not None
@@ -181,16 +213,16 @@ def test_set_can_switch_commands_off(tmp_path: Path) -> None:
 def test_set_without_a_change_is_refused(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    code = main(["--state-dir", str(tmp_path), "set", "--for", "1h"])
+    code = tool.main(["--state-dir", str(tmp_path), "set", "--for", "1h"])
 
-    assert code == REFUSED
+    assert code == tool.REFUSED
     assert "has to change something" in capsys.readouterr().err
     assert read_grant(tmp_path) is None
 
 
 def test_set_without_a_duration_is_refused(tmp_path: Path) -> None:
     with pytest.raises(SystemExit):
-        main(["--state-dir", str(tmp_path), "set", "--exec"])
+        tool.main(["--state-dir", str(tmp_path), "set", "--exec"])
 
     assert read_grant(tmp_path) is None
 
@@ -198,9 +230,9 @@ def test_set_without_a_duration_is_refused(tmp_path: Path) -> None:
 def test_set_with_an_unusable_duration_is_refused(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    code = main(["--state-dir", str(tmp_path), "set", "--exec", "--for", "forever"])
+    argv = ["--state-dir", str(tmp_path), "set", "--exec", "--for", "forever"]
 
-    assert code == REFUSED
+    assert tool.main(argv) == tool.REFUSED
     assert "not a duration" in capsys.readouterr().err
     assert read_grant(tmp_path) is None
 
@@ -208,10 +240,10 @@ def test_set_with_an_unusable_duration_is_refused(
 def test_show_reports_the_grant_and_when_it_lapses(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    main(["--state-dir", str(tmp_path), "set", "--exec", "--for", "2h"])
+    tool.main(["--state-dir", str(tmp_path), "set", "--exec", "--for", "2h"])
     capsys.readouterr()
 
-    assert main(["--state-dir", str(tmp_path), "show"]) == 0
+    assert tool.main(["--state-dir", str(tmp_path), "show"]) == 0
     shown = capsys.readouterr().out
     assert "commands on" in shown
     assert "lapses in 1h 59m" in shown
@@ -222,7 +254,7 @@ def test_show_of_a_lapsed_grant_says_so(
 ) -> None:
     write_grant(tmp_path, Grant(time.time() - 1, execute=True))
 
-    main(["--state-dir", str(tmp_path), "show"])
+    tool.main(["--state-dir", str(tmp_path), "show"])
 
     assert "has lapsed" in capsys.readouterr().out
 
@@ -230,7 +262,7 @@ def test_show_of_a_lapsed_grant_says_so(
 def test_show_without_a_grant_says_so(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert main(["--state-dir", str(tmp_path), "show"]) == 0
+    assert tool.main(["--state-dir", str(tmp_path), "show"]) == 0
     assert "no grant" in capsys.readouterr().out
 
 
@@ -239,16 +271,16 @@ def test_show_of_an_unusable_grant_file_is_refused(
 ) -> None:
     (tmp_path / GRANT_FILE).write_text("not json", encoding="utf-8")
 
-    assert main(["--state-dir", str(tmp_path), "show"]) == REFUSED
+    assert tool.main(["--state-dir", str(tmp_path), "show"]) == tool.REFUSED
     assert "cannot be used" in capsys.readouterr().err
 
 
 def test_reset_removes_the_grant(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    main(["--state-dir", str(tmp_path), "set", "--exec", "--for", "1h"])
+    tool.main(["--state-dir", str(tmp_path), "set", "--exec", "--for", "1h"])
 
-    assert main(["--state-dir", str(tmp_path), "reset"]) == 0
+    assert tool.main(["--state-dir", str(tmp_path), "reset"]) == 0
     assert "removed" in capsys.readouterr().out
     assert read_grant(tmp_path) is None
 
@@ -256,5 +288,5 @@ def test_reset_removes_the_grant(
 def test_reset_without_a_grant_says_so(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert main(["--state-dir", str(tmp_path), "reset"]) == 0
+    assert tool.main(["--state-dir", str(tmp_path), "reset"]) == 0
     assert "no grant" in capsys.readouterr().out

@@ -119,7 +119,8 @@ A tool that will not do what it was asked raises `ToolError` with a sentence
 saying why. `OutsideBoundaryError` is the one case worth catching separately:
 the boundary does not let the tool reach that path. `NotPermittedError` says the
 boundary does not permit the action at all, such as a switched-off command.
-Both messages name the `mcp-shell-grant` command that would allow it.
+Both messages name the grant command (`tools/mcp_shell_grant.py`) that would
+allow it.
 `GrantError` means the grant file cannot be used, and every check is refused
 until it is fixed or reset.
 
@@ -162,16 +163,17 @@ slip, not against intent.
 
 ### Grants
 
-`mcp-shell-grant` raises or lowers the boundary of a running server for a
-limited time, without a restart. It writes `grant.json` into the state
+`tools/mcp_shell_grant.py` raises or lowers the boundary of a running server
+for a limited time, without a restart. It writes `grant.json` into the state
 directory; the server reads it at every check, and the tools cannot change it.
+It runs with the interpreter the server runs with:
 
 ```bash
-mcp-shell-grant set --root /opt/data --for 2h   # also write below /opt/data
-mcp-shell-grant set --exec --for 30m            # let shell commands run
-mcp-shell-grant set --mode strict --for 1d      # confine reading too
-mcp-shell-grant show
-mcp-shell-grant reset
+.venv/bin/python tools/mcp_shell_grant.py set --root /opt/data --for 2h  # write there too
+.venv/bin/python tools/mcp_shell_grant.py set --exec --for 30m           # let commands run
+.venv/bin/python tools/mcp_shell_grant.py set --mode strict --for 1d     # confine reading
+.venv/bin/python tools/mcp_shell_grant.py show
+.venv/bin/python tools/mcp_shell_grant.py reset
 ```
 
 `--root` adds to the configured roots, `--mode` replaces the mode, `--exec`
