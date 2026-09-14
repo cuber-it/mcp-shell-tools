@@ -166,14 +166,15 @@ slip, not against intent.
 `tools/mcp_shell_grant.py` raises or lowers the boundary of a running server
 for a limited time, without a restart. It writes `grant.json` into the state
 directory; the server reads it at every check, and the tools cannot change it.
-It runs with the interpreter the server runs with:
+It runs with the interpreter the server runs with; `scripts/grant.sh` does
+that for you and works from anywhere, also through a symlink:
 
 ```bash
-.venv/bin/python tools/mcp_shell_grant.py set --root /opt/data --for 2h  # write there too
-.venv/bin/python tools/mcp_shell_grant.py set --exec --for 30m           # let commands run
-.venv/bin/python tools/mcp_shell_grant.py set --mode strict --for 1d     # confine reading
-.venv/bin/python tools/mcp_shell_grant.py show
-.venv/bin/python tools/mcp_shell_grant.py reset
+scripts/grant.sh set --root /opt/data --for 2h   # write there too
+scripts/grant.sh set --exec --for 30m            # let commands run
+scripts/grant.sh set --mode strict --for 1d      # confine reading
+scripts/grant.sh show
+scripts/grant.sh reset
 ```
 
 `--root` adds to the configured roots, `--mode` replaces the mode, `--exec`

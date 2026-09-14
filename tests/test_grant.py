@@ -26,6 +26,7 @@ from mcp_shell_tools.grant import (
 )
 
 TOOL = Path(__file__).resolve().parents[1] / "tools" / "mcp_shell_grant.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "grant.sh"
 HOME = Path("/home/someone")
 BASE = Boundary((HOME,), "guarded", execute=False)
 
@@ -184,6 +185,38 @@ def test_the_program_runs_from_the_command_line(tmp_path: Path) -> None:
 
     assert finished.returncode == 0
     assert f"no grant in {tmp_path}" in finished.stdout
+
+
+def test_the_wrapper_script_runs_the_program_from_anywhere(tmp_path: Path) -> None:
+    link = tmp_path / "grant"
+    link.symlink_to(SCRIPT)
+
+    finished = subprocess.run(
+        [str(link), "--state-dir", str(tmp_path), "set", "--exec", "--for", "1h"],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        check=False,
+    )
+
+    grant = read_grant(tmp_path)
+    assert finished.returncode == 0, finished.stderr
+    assert grant is not None
+    assert grant.execute is True
+
+
+def test_the_wrapper_script_without_a_venv_says_how_to_make_one(tmp_path: Path) -> None:
+    (tmp_path / "scripts").mkdir()
+    copy = tmp_path / "scripts" / "grant.sh"
+    copy.write_text(SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
+    copy.chmod(0o755)
+
+    finished = subprocess.run(
+        [str(copy), "show"], capture_output=True, text=True, check=False
+    )
+
+    assert finished.returncode == 2
+    assert "python3 -m venv .venv" in finished.stderr
 
 
 def test_set_writes_a_grant_that_is_in_force(
