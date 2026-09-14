@@ -5,9 +5,6 @@ subprocess — and negotiates the current protocol revision while doing it. That
 makes this the place to pin what a caller actually receives: the tool set, the
 descriptions, the effect of a call, and above all whether a refusal keeps its
 reason.
-
-The SDK is reached through ``importorskip`` rather than an import, because it
-is an optional extra and the package has to be testable without it.
 """
 
 from __future__ import annotations
@@ -17,12 +14,10 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-import pytest
+from mcp import Client
 
 from mcp_shell_tools import Boundary, Workspace
 from mcp_shell_tools.server import app
-
-MCP = pytest.importorskip("mcp")
 
 CURRENT_REVISION = "2026-07-28"
 
@@ -32,7 +27,7 @@ def served(space: Workspace, work: Callable[[Any], Awaitable[Any]]) -> Any:
     built = app.build(space)
 
     async def talk() -> Any:
-        async with MCP.Client(built) as client:
+        async with Client(built) as client:
             return await work(client)
 
     return asyncio.run(talk())

@@ -1,22 +1,35 @@
 """The server: the whole tool set over stdio or HTTP, through the MCP SDK.
 
 This is the only module that imports the SDK. It takes the catalogue from
-:mod:`mcp_shell_tools.server.registry` and publishes it, so a change in the SDK
-is felt here and nowhere else. The SDK is an optional dependency: install
-``mcp-shell-tools[server]`` to get it.
+:mod:`mcp_shell_tools.server.registry` and the authentication from
+:mod:`mcp_shell_tools.server.auth` and hands both to the SDK, so a change in
+the SDK is felt here and nowhere else.
 """
 
 from __future__ import annotations
 
 import argparse
 import functools
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
+from mcp.server.auth.provider import AccessToken
+from mcp.server.auth.settings import AuthSettings
+from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError as AnticipatedError
+
 from mcp_shell_tools import __version__
 from mcp_shell_tools.boundary import DEFAULT_MODE, MODES
 from mcp_shell_tools.errors import ToolError
+from mcp_shell_tools.server.auth import (
+    AuthConfig,
+    ConfigurationError,
+    TokenCheck,
+    auth_from_environment,
+    guard_exposure,
+)
 from mcp_shell_tools.server.registry import Tool, catalogue
 from mcp_shell_tools.workspace import Workspace, workspace_from
 
@@ -24,9 +37,12 @@ INSTRUCTIONS = (
     "Workstation tools: files, editing, searching, running commands, notes "
     "that survive a restart, and a look at the machine."
 )
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 8000
+REFUSED = 2
 
 
-def _anticipated(tool: Tool, refusal: type[Exception]) -> Tool:
+def _anticipated(tool: Tool) -> Tool:
     """Wrap a tool so that its refusals reach the caller with their reason.
 
     The SDK tells a deliberate refusal from a crash by the exception class:
@@ -45,45 +61,77 @@ def _anticipated(tool: Tool, refusal: type[Exception]) -> Tool:
         try:
             return tool(*args, **kwargs)
         except ToolError as err:
-            raise refusal(str(err)) from err
+            raise AnticipatedError(str(err)) from err
 
     return translated
 
 
-def build(space: Workspace) -> Any:
-    """Return a server with the whole tool set published on it.
+class _Verifier:
+    """Answers the SDK's question about a token by asking a :class:`TokenCheck`."""
 
-    Raises:
-        SystemExit: The SDK is not installed.
-    """
-    try:
-        # Imported here, not at module level: the SDK is an optional extra,
-        # and a missing one has to end in a sentence, not a traceback.
-        # pylint: disable-next=import-outside-toplevel
-        from mcp.server.mcpserver import MCPServer
+    def __init__(self, check: TokenCheck) -> None:
+        """Bind the verifier to the check it asks."""
+        self._check = check
 
-        # pylint: disable-next=import-outside-toplevel
-        from mcp.server.mcpserver.exceptions import ToolError as AnticipatedError
-    except ImportError:
-        sys.exit(
-            "The server needs the MCP SDK:\n    pip install 'mcp-shell-tools[server]'"
+    async def verify_token(self, token: str) -> AccessToken | None:
+        """Return the SDK's access token for a valid token, None otherwise."""
+        info = await self._check.check(token)
+        if info is None:
+            return None
+        return AccessToken(
+            token=token,
+            client_id=info.client_id,
+            scopes=list(info.scopes),
+            subject=info.subject,
+            expires_at=info.expires_at,
         )
 
+
+def _auth_arguments(auth: AuthConfig | None) -> dict[str, Any]:
+    """Translate the authentication for the SDK's constructor.
+
+    Resource validation stays off. Whether the authorization server names the
+    resource a token was issued for is not established, and switching it on
+    without that would reject every token.
+    """
+    if auth is None:
+        return {}
+    return {
+        "token_verifier": _Verifier(auth.check),
+        "auth": AuthSettings(
+            issuer_url=auth.issuer_url,
+            resource_server_url=auth.resource_url,
+            required_scopes=list(auth.required_scopes),
+            validate_token_resource=False,
+        ),
+    }
+
+
+def build(space: Workspace, auth: AuthConfig | None = None) -> MCPServer:
+    """Return a server with the whole tool set published on it.
+
+    With ``auth``, every HTTP request has to carry a bearer token the check
+    accepts, and the server publishes its protected resource metadata. stdio
+    is not affected, because a pipe carries no token.
+    """
     server = MCPServer(
         name="mcp-shell-tools",
         version=__version__,
         instructions=INSTRUCTIONS,
+        **_auth_arguments(auth),
     )
     for name, tool in catalogue(space).items():
-        server.add_tool(_anticipated(tool, AnticipatedError), name=name)
+        server.add_tool(_anticipated(tool), name=name)
     return server
 
 
 def parse(argv: list[str] | None = None) -> argparse.Namespace:
-    """Read the server's arguments."""
+    """Read the server's arguments; host and port default to the environment."""
     parser = argparse.ArgumentParser(
         prog="mcp-shell-tools",
-        description="Serve the workstation tools over MCP.",
+        description="Serve the workstation tools over MCP. Authentication is "
+        "read from MCP_OAUTH_ENABLED, MCP_OAUTH_SERVER_URL, MCP_PUBLIC_URL and "
+        "MCP_AUTH_METHOD.",
     )
     parser.add_argument(
         "--transport",
@@ -92,8 +140,17 @@ def parse(argv: list[str] | None = None) -> argparse.Namespace:
         help="stdio for a client that starts the server itself, "
         "streamable-http to listen on a port (default: stdio)",
     )
-    parser.add_argument("--host", default="127.0.0.1", help="HTTP: address to bind")
-    parser.add_argument("--port", type=int, default=8000, help="HTTP: port to bind")
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("MCP_HOST", DEFAULT_HOST),
+        help="HTTP: address to bind (default: MCP_HOST or 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("MCP_PORT", DEFAULT_PORT)),
+        help="HTTP: port to bind (default: MCP_PORT or 8000)",
+    )
     parser.add_argument(
         "--path", default="/mcp", help="HTTP: path the server answers on"
     )
@@ -141,21 +198,34 @@ def workspace_from_args(args: argparse.Namespace) -> Workspace:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the server until it is stopped."""
-    args = parse(argv)
-    server = build(workspace_from_args(args))
+    """Run the server until it is stopped.
 
+    Returns:
+        0 after the server stopped, 2 when the configuration was refused
+        before it started.
+    """
+    args = parse(argv)
+    try:
+        auth = auth_from_environment(os.environ, args.path)
+        guard_exposure(args.transport, args.host, auth)
+        space = workspace_from_args(args)
+    except (ConfigurationError, ToolError) as err:
+        print(f"mcp-shell-tools: {err}", file=sys.stderr)
+        return REFUSED
+
+    server = build(space, auth)
     if args.transport == "stdio":
         server.run("stdio")
         return 0
 
-    # Host, port and path are transport options in mcp 2.x, not server
-    # settings, so they are passed to run rather than to the constructor.
+    # Sessionless: nothing ties a caller to this process between requests,
+    # and a client of the older revision gets no session to lose either.
     server.run(
-        args.transport,
+        "streamable-http",
         host=args.host,
         port=args.port,
         streamable_http_path=args.path,
+        stateless_http=True,
     )
     return 0
 

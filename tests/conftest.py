@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
+from loopback import Issuer, serve_issuer
 from mcp_shell_tools import Boundary, Workspace
+
+
+@pytest.fixture
+def issuer() -> Iterator[Issuer]:
+    """Return a stand-in authorization server that rejects every token."""
+    with serve_issuer() as running:
+        yield running
 
 
 @pytest.fixture

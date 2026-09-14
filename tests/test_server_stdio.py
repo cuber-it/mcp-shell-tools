@@ -15,10 +15,6 @@ import json
 import subprocess
 import sys
 
-import pytest
-
-pytest.importorskip("mcp")
-
 REVISION = "2026-07-28"
 ENVELOPE = {
     "io.modelcontextprotocol/protocolVersion": REVISION,

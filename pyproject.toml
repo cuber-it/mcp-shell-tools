@@ -46,11 +46,18 @@ max-complexity = 10
 [tool.ruff.lint.pydocstyle]
 convention = "pep257"
 
+[tool.ruff.lint.pep8-naming]
+# http.server dispatches to handler methods by the HTTP verb, in capitals.
+extend-ignore-names = ["do_POST"]
+
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "mcp".msg = "Only mcp_shell_tools.server.app may import the SDK."
 
 [tool.ruff.lint.per-file-ignores]
 "src/mcp_shell_tools/server/app.py" = ["TID251"]
+# These tests check the SDK binding the way an SDK client and caller meet it.
+"tests/test_server.py" = ["TID251"]
+"tests/test_server_client.py" = ["TID251"]
 # Test names carry the sentence; a docstring would only repeat them.
 "tests/*" = ["D103"]
 
@@ -58,11 +65,15 @@ convention = "pep257"
 max-line-length = 88
 
 [tool.pylint.design]
+# A token check and the SDK's verifier each answer exactly one question.
+min-public-methods = 1
 # find_replace takes what it replaces, where to look, and whether to write.
 # Folding those into an object would hide the signature the caller reads.
 max-args = 6
 
 [tool.pylint.basic]
+# http.server dispatches to handler methods by the HTTP verb, in capitals.
+good-names-rgxs = ["^do_[A-Z]+$"]
 # Test names carry the sentence; a docstring would only repeat them.
 no-docstring-rgx = "^test_"
 

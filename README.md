@@ -36,7 +36,37 @@ In a client that starts the server itself:
 
 `--allowed-root` confines the tools to a directory and may be repeated;
 without it they may touch the whole disk. `--path` moves the HTTP endpoint off
-`/mcp`.
+`/mcp`. `--host` and `--port` default to `MCP_HOST` and `MCP_PORT`.
+
+### Authentication
+
+Over HTTP the server is an OAuth resource server. It is switched on and
+configured through the environment:
+
+| Variable | Meaning |
+|---|---|
+| `MCP_OAUTH_ENABLED` | `true` switches authentication on |
+| `MCP_OAUTH_SERVER_URL` | the authorization server, passed on exactly as written |
+| `MCP_PUBLIC_URL` | public base URL; the resource is this URL plus `--path` |
+| `MCP_AUTH_METHOD` | how tokens are checked, `introspection` unless set |
+
+`introspection` asks `<MCP_OAUTH_SERVER_URL>/introspect` (RFC 7662) and
+remembers an accepted token for five minutes. Tokens need the scope `user`.
+Another method is a class with an async `check(token)` and an entry in
+`server/auth.py`'s `CHECKS`.
+
+The server refuses to listen beyond this machine without authentication.
+stdio carries no token and is not affected.
+
+```bash
+MCP_OAUTH_ENABLED=true \
+MCP_OAUTH_SERVER_URL=https://auth.example/ \
+MCP_PUBLIC_URL=https://mcp.example/ \
+mcp-shell-tools --transport streamable-http --host 0.0.0.0 --port 12204 --path /shell
+```
+
+A reverse proxy in front has to pass the endpoint and
+`/.well-known/oauth-protected-resource<path>`, with `Authorization` untouched.
 
 The server speaks protocol revision 2026-07-28, where a request carries its own
 version and capabilities and there is no `initialize` handshake. The SDK still
