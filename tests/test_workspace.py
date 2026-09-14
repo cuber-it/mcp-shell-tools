@@ -86,7 +86,7 @@ def test_the_refusal_names_the_grant_that_would_allow_it(guarded: Workspace) -> 
     with pytest.raises(OutsideBoundaryError) as refused:
         guarded.resolve("../outside.txt", Access.WRITE)
 
-    expected = f"mcp_shell_grant.py --state-dir {guarded.state_dir} set --root {parent}"
+    expected = f"grant.sh --state-dir {guarded.state_dir} set --root {parent}"
     assert expected in str(refused.value)
 
 

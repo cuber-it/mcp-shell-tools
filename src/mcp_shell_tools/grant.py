@@ -1,10 +1,10 @@
 """Grants: raising or lowering the boundary from outside, for a limited time.
 
-A grant is a file in the server's state directory, written by the
-grant program ``tools/mcp_shell_grant.py`` on the host and never by the
-tools. The server
-reads it at every check, so a grant takes effect at the next tool call and
-lapses when its time is up, without a restart.
+A grant is a file in the server's state directory, written on the host through
+``scripts/grant.sh`` and never by the tools. The server reads it at every
+check, so a grant takes effect at the next tool call and lapses when its time
+is up, without a restart. Refusals name the ``scripts/grant.sh`` call that
+would lift them.
 
 A grant changes the configured boundary in up to three ways:
 
@@ -23,7 +23,6 @@ from __future__ import annotations
 import contextlib
 import json
 import re
-import sys
 import time
 from dataclasses import dataclass
 from functools import lru_cache
@@ -33,7 +32,7 @@ from mcp_shell_tools.boundary import MODES, Boundary
 from mcp_shell_tools.errors import GrantError
 from mcp_shell_tools.output import span
 
-PROGRAM = Path(__file__).resolve().parents[2] / "tools" / "mcp_shell_grant.py"
+PROGRAM = Path(__file__).resolve().parents[2] / "scripts" / "grant.sh"
 GRANT_FILE = "grant.json"
 DEFAULT_STATE_DIR = "~/.mcp-shell-tools"
 SUGGESTED_DURATION = "1h"
@@ -225,8 +224,8 @@ def parse_duration(text: str) -> int:
 
 
 def grant_command() -> str:
-    """Return how the grant program is started on this host."""
-    return f"{sys.executable} {PROGRAM}"
+    """Return how grants are set on this host: the path of ``scripts/grant.sh``."""
+    return str(PROGRAM)
 
 
 def hint(state_dir: Path | None, change: str) -> str:

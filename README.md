@@ -119,8 +119,7 @@ A tool that will not do what it was asked raises `ToolError` with a sentence
 saying why. `OutsideBoundaryError` is the one case worth catching separately:
 the boundary does not let the tool reach that path. `NotPermittedError` says the
 boundary does not permit the action at all, such as a switched-off command.
-Both messages name the grant command (`tools/mcp_shell_grant.py`) that would
-allow it.
+Both messages name the `scripts/grant.sh` call that would allow it.
 `GrantError` means the grant file cannot be used, and every check is refused
 until it is fixed or reset.
 

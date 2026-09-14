@@ -159,15 +159,14 @@ def test_a_failed_write_keeps_the_previous_grant(tmp_path: Path) -> None:
     assert remaining.mode == "open"
 
 
-def test_the_hint_names_interpreter_program_and_change(tmp_path: Path) -> None:
+def test_the_hint_names_the_script_and_the_change(tmp_path: Path) -> None:
     text = hint(tmp_path, "--exec")
 
-    expected = f"{sys.executable} {TOOL} --state-dir {tmp_path} set --exec --for 1h"
-    assert expected in text
+    assert f"with: {SCRIPT} --state-dir {tmp_path} set --exec --for 1h" in text
 
 
-def test_the_hint_points_at_the_program_in_tools() -> None:
-    assert PROGRAM == TOOL
+def test_the_hint_points_at_the_wrapper_script() -> None:
+    assert PROGRAM == SCRIPT
     assert PROGRAM.is_file()
 
 

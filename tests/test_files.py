@@ -188,7 +188,7 @@ def test_guarded_mode_reads_outside_but_writes_only_inside(guarded: Workspace) -
     beside = guarded.working_dir.parent / "beside.txt"
 
     assert files.file_read(guarded, "../outside.txt") == "secret\n"
-    with pytest.raises(OutsideBoundaryError, match="mcp_shell_grant.py"):
+    with pytest.raises(OutsideBoundaryError, match="scripts/grant.sh"):
         files.file_write(guarded, str(beside), "written")
 
     assert not beside.exists()
