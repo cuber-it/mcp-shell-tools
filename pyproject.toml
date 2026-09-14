@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcp-shell-tools"
+version = "6.0.0"
+description = "33 workstation tools — filesystem, editor, search, shell, notes, system"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Ulrich Cuber", email = "sonstige@uc-it.de" }]
+keywords = ["mcp", "shell", "filesystem", "tools", "workstation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+]
+dependencies = ["psutil>=5.9"]
+
+[project.optional-dependencies]
+server = ["mcp>=2,<3"]
+dev = ["pytest", "ruff", "pylint", "mcp>=2,<3"]
+
+[project.scripts]
+mcp-shell-tools = "mcp_shell_tools.server:main"
+
+[project.urls]
+Homepage = "https://www.uc-it.de"
+Repository = "https://github.com/cuber-it/mcp-shell-tools"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "D", "UP", "B", "C90", "TID"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"mcp".msg = "Only mcp_shell_tools.server may import the SDK."
+
+[tool.ruff.lint.per-file-ignores]
+"src/mcp_shell_tools/server.py" = ["TID251"]
+# Test names carry the sentence; a docstring would only repeat them.
+"tests/*" = ["D103"]
+
+[tool.pylint.format]
+max-line-length = 88
+
+[tool.pylint.design]
+# A stand-in with a single method is the point, not a smell.
+min-public-methods = 1
+# find_replace takes what it replaces, where to look, and whether to write.
+# Folding those into an object would hide the signature the caller reads.
+max-args = 6
+
+[tool.pylint.basic]
+# Test names carry the sentence; a docstring would only repeat them.
+no-docstring-rgx = "^test_"
+
+[tool.pylint."messages control"]
+# A pytest fixture is used under its own name by design.
+disable = ["redefined-outer-name"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

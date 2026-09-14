@@ -1,0 +1,169 @@
+"""The server: the whole tool set over stdio or HTTP.
+
+This is the only module that touches the MCP SDK. Everything under it — the
+tool modules and :func:`mcp_shell_tools.registry.register` — stays free of it,
+so a change in the SDK is felt here and nowhere else. The SDK is an optional
+dependency: install ``mcp-shell-tools[server]`` to get it.
+"""
+
+from __future__ import annotations
+
+import argparse
+import functools
+import sys
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+from mcp_shell_tools import __version__
+from mcp_shell_tools.registry import register
+from mcp_shell_tools.workspace import ToolError, Workspace, workspace_from
+
+INSTRUCTIONS = (
+    "Workstation tools: files, editing, searching, running commands, notes "
+    "that survive a restart, and a look at the machine."
+)
+
+
+class _Anticipated:
+    """Passes registrations on, turning our refusals into the SDK's.
+
+    The SDK tells a deliberate refusal from a crash by the exception class:
+    its own ``ToolError`` reaches the caller carrying its message, while
+    anything else is a crash and the caller is told no more than "Error
+    executing tool <name>". The tools raise their own ``ToolError``, which
+    would land in that second case — every carefully worded refusal would
+    arrive blank. This translates them, and only them: a real crash stays a
+    crash.
+    """
+
+    def __init__(self, server: Any, refusal: type[Exception]) -> None:
+        """Bind to the server being wrapped and the class to raise.
+
+        Args:
+            server: What the registrations are passed on to.
+            refusal: The SDK's exception for an anticipated failure.
+        """
+        self._server = server
+        self._refusal = refusal
+
+    def tool(self, *args: Any, **kwargs: Any) -> Callable[..., Any]:
+        """Return a decorator that registers the translated function."""
+        decorate = self._server.tool(*args, **kwargs)
+
+        def keep(handler: Callable[..., str]) -> Callable[..., str]:
+            @functools.wraps(handler)
+            def translated(*called: Any, **named: Any) -> str:
+                try:
+                    return handler(*called, **named)
+                except ToolError as err:
+                    raise self._refusal(str(err)) from err
+
+            return decorate(translated)
+
+        return keep
+
+
+def build(space: Workspace) -> Any:
+    """Return a server with the whole tool set published on it.
+
+    Raises:
+        SystemExit: The SDK is not installed.
+    """
+    try:
+        # Imported here, not at module level: the SDK is an optional extra,
+        # and a missing one has to end in a sentence, not a traceback.
+        # pylint: disable-next=import-outside-toplevel
+        from mcp.server.mcpserver import MCPServer
+
+        # pylint: disable-next=import-outside-toplevel
+        from mcp.server.mcpserver.exceptions import ToolError as AnticipatedError
+    except ImportError:
+        sys.exit(
+            "The server needs the MCP SDK:\n"
+            "    pip install 'mcp-shell-tools[server]'"
+        )
+
+    server = MCPServer(
+        name="mcp-shell-tools",
+        version=__version__,
+        instructions=INSTRUCTIONS,
+    )
+    register(_Anticipated(server, AnticipatedError), space)
+    return server
+
+
+def parse(argv: list[str] | None = None) -> argparse.Namespace:
+    """Read the server's arguments."""
+    parser = argparse.ArgumentParser(
+        prog="mcp-shell-tools",
+        description="Serve the workstation tools over MCP.",
+    )
+    parser.add_argument(
+        "--transport",
+        choices=("stdio", "streamable-http", "sse"),
+        default="stdio",
+        help="stdio for a client that starts the server itself, "
+        "streamable-http to listen on a port (default: stdio)",
+    )
+    parser.add_argument("--host", default="127.0.0.1", help="HTTP: address to bind")
+    parser.add_argument("--port", type=int, default=8000, help="HTTP: port to bind")
+    parser.add_argument(
+        "--path", default="/mcp", help="HTTP: path the server answers on"
+    )
+    parser.add_argument(
+        "--working-dir",
+        default=str(Path.cwd()),
+        help="Where the tools start out (default: the current directory)",
+    )
+    parser.add_argument(
+        "--allowed-root",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="Confine the tools to this directory; repeatable. "
+        "Without it they may touch the whole disk.",
+    )
+    parser.add_argument(
+        "--state-dir", default="", help="Where sessions are written"
+    )
+    return parser.parse_args(argv)
+
+
+def workspace_from_args(args: argparse.Namespace) -> Workspace:
+    """Build the workspace the tools will share.
+
+    Raises:
+        ToolError: The working directory does not exist.
+    """
+    settings: dict[str, Any] = {
+        "working_dir": args.working_dir,
+        "allowed_roots": args.allowed_root,
+    }
+    if args.state_dir:
+        settings["state_dir"] = args.state_dir
+    return workspace_from(settings)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the server until it is stopped."""
+    args = parse(argv)
+    server = build(workspace_from_args(args))
+
+    if args.transport == "stdio":
+        server.run("stdio")
+        return 0
+
+    # Host, port and path are transport options in mcp 2.x, not server
+    # settings, so they are passed to run rather than to the constructor.
+    server.run(
+        args.transport,
+        host=args.host,
+        port=args.port,
+        streamable_http_path=args.path,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
