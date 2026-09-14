@@ -7,7 +7,8 @@
 - The tests keep their temporary directories in `.pytest-tmp` instead of
   `/tmp`, so the refusals they expect are still refusals
 - The two grant tests that need a checkout are skipped when the package is
-  installed, so the test suite passes from the source archive
+  installed, and two refusal tests (a504f20) expect the grant call the package
+  actually names, so the test suite passes from the source archive
 
 ## e92651d
 
