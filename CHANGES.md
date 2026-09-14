@@ -1,5 +1,13 @@
 # Changes
 
+## e92651d
+
+- Package metadata for PyPI: description, keywords, classifiers, documentation
+  and changelog links; setuptools 77 or later for the license expression
+- `MANIFEST.in` puts tests, documentation, `scripts/` and `CHANGES.md` into the
+  source archive
+- `build` and `twine` in the `dev` extra; release steps in `doc/development.md`
+
 ## 246e3ec
 
 - The grant program is part of the package: `mcp_shell_tools.tools.mcp_shell_grant`,
