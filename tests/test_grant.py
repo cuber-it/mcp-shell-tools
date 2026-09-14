@@ -26,6 +26,10 @@ from mcp_shell_tools.grant import (
 from mcp_shell_tools.tools import mcp_shell_grant as tool
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "grant.sh"
+# Installed from an archive, the package does not sit next to this checkout's
+# scripts/, and the hint rightly names the module instead.
+FROM_CHECKOUT = GRANT_SCRIPT == SCRIPT
+INSTALLED = "the package is installed, not run from this checkout"
 HOME = Path("/home/someone")
 BASE = Boundary((HOME,), "guarded", execute=False)
 
@@ -147,12 +151,14 @@ def test_a_failed_write_keeps_the_previous_grant(tmp_path: Path) -> None:
     assert remaining.mode == "open"
 
 
+@pytest.mark.skipif(not FROM_CHECKOUT, reason=INSTALLED)
 def test_the_hint_names_the_script_and_the_change(tmp_path: Path) -> None:
     text = hint(tmp_path, "--exec")
 
     assert f"with: {SCRIPT} --state-dir {tmp_path} set --exec --for 1h" in text
 
 
+@pytest.mark.skipif(not FROM_CHECKOUT, reason=INSTALLED)
 def test_the_hint_points_at_the_wrapper_script() -> None:
     assert GRANT_SCRIPT == SCRIPT
     assert GRANT_SCRIPT.is_file()

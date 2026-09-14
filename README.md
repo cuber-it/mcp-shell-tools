@@ -11,7 +11,7 @@ Python library or served over the Model Context Protocol.
 - **Server**: the same tools over stdio or streamable HTTP with the MCP SDK,
   protocol revision 2026-07-28, OAuth for HTTP.
 - **Boundary**: reading reaches the whole system, writing stays inside allowed
-  roots, shell commands are off. A person on the host widens or narrows that
+  roots and `/tmp`, shell commands are off. A person on the host widens or narrows that
   for a limited time with a grant.
 
 ## Installation

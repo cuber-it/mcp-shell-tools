@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from mcp_shell_tools import Boundary, ToolError
-from mcp_shell_tools.boundary import Access
+from mcp_shell_tools.boundary import TMP, Access
 
 ROOT = Path("/srv/inside")
 OUTSIDE = Path("/etc/hostname")
@@ -58,3 +58,20 @@ def test_a_sibling_with_a_shared_prefix_is_outside() -> None:
 
 def test_without_roots_even_strict_admits_everything() -> None:
     assert Boundary(mode="strict").admits(OUTSIDE, Access.DESTROY)
+
+
+@pytest.mark.parametrize("mode", ["open", "guarded", "strict"])
+def test_tmp_is_within_reach_for_every_access_in_every_mode(mode: str) -> None:
+    boundary = Boundary((ROOT,), mode)
+
+    assert all(boundary.admits(TMP / "work" / "a.txt", access) for access in Access)
+    assert all(boundary.admits(TMP, access) for access in Access)
+
+
+def test_a_directory_that_only_starts_like_tmp_is_not_tmp() -> None:
+    assert not Boundary((ROOT,), "strict").admits(Path("/tmpfiles/a"), Access.WRITE)
+
+
+def test_the_test_directories_lie_outside_tmp(tmp_path: Path) -> None:
+    """Otherwise every refusal the tests expect would be admitted as /tmp."""
+    assert TMP not in tmp_path.resolve().parents

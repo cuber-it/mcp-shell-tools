@@ -11,6 +11,13 @@ from loopback import Issuer, serve_issuer
 from mcp_shell_tools import Boundary, Workspace
 
 
+@pytest.hookimpl(tryfirst=True)
+def pytest_configure(config: pytest.Config) -> None:
+    """Keep the test directories out of /tmp, which the boundary always admits."""
+    if config.option.basetemp is None:
+        config.option.basetemp = str(config.rootpath / ".pytest-tmp")
+
+
 @pytest.fixture
 def issuer() -> Iterator[Issuer]:
     """Return a stand-in authorization server that rejects every token."""

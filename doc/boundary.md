@@ -20,6 +20,9 @@ others.
 | `guarded` (default) | anywhere | inside the roots |
 | `strict` | inside the roots | inside the roots |
 
+**`/tmp` is always within reach**: reading, writing, deleting and moving there
+need no root and no grant, in every mode.
+
 **Commands** are a switch of their own. A shell command reaches past every path
 check, so no mode can confine it. The server starts with commands off;
 `--exec` switches them on for good, a grant for a while.

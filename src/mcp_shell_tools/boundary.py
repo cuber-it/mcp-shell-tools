@@ -10,8 +10,9 @@ How far the roots reach depends on the mode:
   access (deleting, moving, replacing across files) to them.
 - ``strict`` confines every access to them.
 
-Empty roots mean no limit in every mode. Whether shell commands run is a
-separate setting.
+``/tmp`` is always within reach, for every access and in every mode. Empty
+roots mean no limit in every mode. Whether shell commands run is a separate
+setting.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from mcp_shell_tools.errors import ToolError
 
 MODES = ("open", "guarded", "strict")
 DEFAULT_MODE = "guarded"
+TMP = Path("/tmp")
 
 
 class Access(StrEnum):
@@ -59,8 +61,15 @@ class Boundary:
 
     def admits(self, resolved: Path, access: Access = Access.READ) -> bool:
         """Say whether this access may reach a resolved path."""
-        if not self.roots or self.mode == "open":
+        if not self.roots or self.mode == "open" or _within(resolved, (TMP,)):
             return True
         if self.mode == "guarded" and access is Access.READ:
             return True
-        return any(resolved == root or root in resolved.parents for root in self.roots)
+        return _within(resolved, self.roots)
+
+
+def _within(path: Path, directories: tuple[Path, ...]) -> bool:
+    """Say whether a path is one of the directories or lies below one."""
+    return any(
+        path == directory or directory in path.parents for directory in directories
+    )
