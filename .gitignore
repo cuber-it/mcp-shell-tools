@@ -11,6 +11,5 @@ htmlcov/
 .env
 *.log
 /board/
-/doc/
 CLAUDE.md
 .claude/
