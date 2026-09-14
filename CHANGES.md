@@ -1,5 +1,14 @@
 # Changes
 
+## fc916e4 — 8.0.0
+
+- Version 8.0.0: completely rewritten and revised
+- README rewritten for PyPI, with absolute links
+- Documentation in `doc/`: server, boundary and grants, tool reference,
+  library, development
+- Tests keep the documentation in step: every tool, server option and
+  environment variable described, every link leading somewhere
+
 ## 37df37a
 
 - Refusals and the message for an unusable grant file name the absolute path of
