@@ -1,5 +1,11 @@
 # Changes
 
+## 9383871
+
+- The grant program is `tools/mcp_shell_grant.py`, no longer an entry point
+  of the package; the library keeps only what the server needs to read grants
+- Refusals name the full call: interpreter, program path, state directory
+
 ## 97dc6b1
 
 - `guarded` now confines writing as well as deleting and moving; reading stays
