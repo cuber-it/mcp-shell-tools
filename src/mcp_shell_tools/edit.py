@@ -81,8 +81,10 @@ def find_replace(
         ToolError: The path does not exist, the pattern is not usable, or a
             file cannot be written.
     """
+    # The root is written into, not destroyed; each file found is checked for
+    # the replacement itself.
+    root = space.existing(path, Access.WRITE if apply else Access.READ)
     access = Access.DESTROY if apply else Access.READ
-    root = space.existing(path, access)
     targets = [root] if root.is_file() else space.glob(root, f"**/{glob}", access)
     hits, stopped = _replace_in(targets, old, new, apply, space.max_results)
 

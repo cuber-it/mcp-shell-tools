@@ -9,6 +9,7 @@ import pytest
 from mcp.server.mcpserver import exceptions
 
 from mcp_shell_tools import Boundary, ToolError, Workspace
+from mcp_shell_tools.boundary import Access
 from mcp_shell_tools.server import app
 
 SWITCHED_ON = {
@@ -74,8 +75,12 @@ def test_the_workspace_carries_the_arguments(tmp_path: Path) -> None:
     space = app.workspace_from_args(args)
 
     assert space.working_dir == tmp_path
-    assert space.boundary == Boundary((tmp_path,), "guarded")
+    assert space.boundary == Boundary((tmp_path,), "guarded", execute=False)
     assert space.state_dir == tmp_path / "state"
+
+
+def test_commands_can_be_switched_on_at_start() -> None:
+    assert app.workspace_from_args(app.parse(["--exec"])).boundary.execute is True
 
 
 def test_the_mode_can_be_chosen() -> None:
@@ -87,11 +92,13 @@ def test_an_unknown_mode_is_not_offered() -> None:
         app.parse(["--mode", "loose"])
 
 
-def test_without_allowed_roots_there_is_no_boundary(tmp_path: Path) -> None:
+def test_by_default_reading_is_free_and_changing_stays_at_home(tmp_path: Path) -> None:
     space = app.workspace_from_args(app.parse(["--working-dir", str(tmp_path)]))
 
-    assert not space.boundary.roots
-    assert space.resolve("/etc") == Path("/etc")
+    assert space.boundary == Boundary((Path.home().resolve(),), "guarded", False)
+    assert space.state_dir == Path("~/.mcp-shell-tools").expanduser().resolve()
+    assert space.boundary.admits(Path("/etc/hostname"), Access.READ)
+    assert not space.boundary.admits(Path("/etc/hostname"), Access.WRITE)
 
 
 def test_a_working_directory_that_is_no_directory_is_refused(tmp_path: Path) -> None:

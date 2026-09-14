@@ -25,6 +25,7 @@ dev = ["pytest", "ruff", "pylint", "mcp>=2,<3"]
 
 [project.scripts]
 mcp-shell-tools = "mcp_shell_tools.server.app:main"
+mcp-shell-grant = "mcp_shell_tools.grant:main"
 
 [project.urls]
 Homepage = "https://www.uc-it.de"

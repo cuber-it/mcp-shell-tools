@@ -34,8 +34,11 @@ In a client that starts the server itself:
 }
 ```
 
-`--allowed-root` confines the tools to a directory and may be repeated;
-without it they may touch the whole disk. `--path` moves the HTTP endpoint off
+By default the server reads everywhere, writes, deletes and moves only below
+the home directory, and runs no shell commands. `--allowed-root` replaces the
+home directory and may be repeated, `--mode` changes how far the roots reach,
+`--exec` switches commands on, and `--state-dir` (default
+`~/.mcp-shell-tools`) holds sessions, the trash and the grant. `--path` moves the HTTP endpoint off
 `/mcp`. `--host` and `--port` default to `MCP_HOST` and `MCP_PORT`.
 
 ### Authentication
@@ -115,7 +118,10 @@ print(run.shell_exec(space, "git status --short"))
 A tool that will not do what it was asked raises `ToolError` with a sentence
 saying why. `OutsideBoundaryError` is the one case worth catching separately:
 the boundary does not let the tool reach that path. `NotPermittedError` says the
-mode does not permit the action at all, such as a command in strict mode.
+boundary does not permit the action at all, such as a switched-off command.
+Both messages name the `mcp-shell-grant` command that would allow it.
+`GrantError` means the grant file cannot be used, and every check is refused
+until it is fixed or reset.
 
 ```python
 from mcp_shell_tools import ToolError
@@ -131,7 +137,7 @@ except ToolError as err:
 ```python
 Workspace(
     working_dir=Path("/home/you/projects"),
-    boundary=Boundary(roots=(), mode="guarded"),  # empty roots: no limit
+    boundary=Boundary(roots=(), mode="guarded", execute=True),  # no roots: no limit
     timeout=120.0,  # seconds a command may run
     max_output=200_000,  # characters of output kept
     max_results=200,  # rows a listing or search returns
@@ -144,18 +150,38 @@ search pattern turns up, so a `..` in the pattern or a symlink pointing outside
 does not get past it. Empty roots mean no limit. How far the roots reach
 depends on the mode:
 
-| Mode | Reading, writing | Deleting, moving, `find_replace` with `apply` | Commands |
-|---|---|---|---|
-| `open` | anywhere | anywhere | yes |
-| `guarded` (default) | anywhere | inside the roots | yes |
-| `strict` | inside the roots | inside the roots | no |
+| Mode | Reading | Writing, deleting, moving, `find_replace` with `apply` |
+|---|---|---|
+| `open` | anywhere | anywhere |
+| `guarded` (default) | anywhere | inside the roots |
+| `strict` | inside the roots | inside the roots |
 
-As long as commands run, a shell command can do what the path checks refuse.
-The modes guard against a slip, not against intent.
+Shell commands are a switch of their own, `execute`, because a command reaches
+past every path check. As long as commands run, the modes guard against a
+slip, not against intent.
+
+### Grants
+
+`mcp-shell-grant` raises or lowers the boundary of a running server for a
+limited time, without a restart. It writes `grant.json` into the state
+directory; the server reads it at every check, and the tools cannot change it.
+
+```bash
+mcp-shell-grant set --root /opt/data --for 2h   # also write below /opt/data
+mcp-shell-grant set --exec --for 30m            # let shell commands run
+mcp-shell-grant set --mode strict --for 1d      # confine reading too
+mcp-shell-grant show
+mcp-shell-grant reset
+```
+
+`--root` adds to the configured roots, `--mode` replaces the mode, `--exec`
+and `--no-exec` switch commands. `--for` is required; a lasting change belongs
+in the server's own options. A new grant replaces the previous one. A grant
+file that cannot be used stops every check instead of being ignored.
 
 `workspace_from(mapping)` builds the same thing from a configuration dict, for
 a caller that reads its settings from a file; the boundary comes from the keys
-`allowed_roots` and `mode`.
+`allowed_roots`, `mode` and `execute`.
 
 ## What there is
 

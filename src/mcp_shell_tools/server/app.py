@@ -23,6 +23,7 @@ from mcp.server.mcpserver.exceptions import ToolError as AnticipatedError
 from mcp_shell_tools import __version__
 from mcp_shell_tools.boundary import DEFAULT_MODE, MODES
 from mcp_shell_tools.errors import ToolError
+from mcp_shell_tools.grant import DEFAULT_STATE_DIR
 from mcp_shell_tools.server.auth import (
     AuthConfig,
     ConfigurationError,
@@ -35,7 +36,16 @@ from mcp_shell_tools.workspace import Workspace, workspace_from
 
 INSTRUCTIONS = (
     "Workstation tools: files, editing, searching, running commands, notes "
-    "that survive a restart, and a look at the machine."
+    "that survive a restart, and a look at the machine. By default reading "
+    "reaches the whole system, writing, deleting and moving stay inside the "
+    "allowed roots, and shell commands are off. A refusal names the "
+    "mcp-shell-grant command that lifts it; a person runs it on the host.\n\n"
+    "Arbeitsplatz-Werkzeuge: Dateien, Bearbeiten, Suchen, Befehle, Notizen, "
+    "die einen Neustart überdauern, und ein Blick auf den Rechner. Standardmäßig "
+    "reicht Lesen durch das ganze System, Schreiben, Löschen und Verschieben "
+    "bleiben in den erlaubten Wurzeln, und Shell-Befehle sind aus. Eine "
+    "Ablehnung nennt den mcp-shell-grant-Befehl, der sie aufhebt; ausführen "
+    "muss ihn ein Mensch auf dem Host."
 )
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
@@ -164,19 +174,26 @@ def parse(argv: list[str] | None = None) -> argparse.Namespace:
         action="append",
         default=[],
         metavar="PATH",
-        help="Confine the tools to this directory; repeatable. "
-        "Without it they may touch the whole disk.",
+        help="An allowed root; repeatable (default: the home directory)",
     )
     parser.add_argument(
-        "--state-dir", default="", help="Where sessions and the trash are written"
+        "--state-dir",
+        default=DEFAULT_STATE_DIR,
+        help="Where sessions, the trash and the grant are kept; empty for none "
+        "(default: %(default)s)",
     )
     parser.add_argument(
         "--mode",
         choices=MODES,
         default=DEFAULT_MODE,
-        help="open ignores the allowed roots, guarded confines deleting and "
-        "moving to them, strict confines everything and runs no commands "
+        help="open ignores the allowed roots, guarded confines writing, deleting "
+        "and moving to them, strict confines reading too "
         f"(default: {DEFAULT_MODE})",
+    )
+    parser.add_argument(
+        "--exec",
+        action="store_true",
+        help="Let shell commands run without a grant",
     )
     return parser.parse_args(argv)
 
@@ -189,8 +206,9 @@ def workspace_from_args(args: argparse.Namespace) -> Workspace:
     """
     settings: dict[str, Any] = {
         "working_dir": args.working_dir,
-        "allowed_roots": args.allowed_root,
+        "allowed_roots": args.allowed_root or [str(Path.home())],
         "mode": args.mode,
+        "execute": args.exec,
     }
     if args.state_dir:
         settings["state_dir"] = args.state_dir

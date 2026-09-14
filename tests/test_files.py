@@ -184,13 +184,14 @@ def test_guarded_mode_refuses_moving_out_of_the_roots(guarded: Workspace) -> Non
     assert (guarded.working_dir / "a.txt").is_file()
 
 
-def test_guarded_mode_reads_and_writes_outside_the_roots(guarded: Workspace) -> None:
+def test_guarded_mode_reads_outside_but_writes_only_inside(guarded: Workspace) -> None:
     beside = guarded.working_dir.parent / "beside.txt"
 
-    files.file_write(guarded, str(beside), "written")
-
     assert files.file_read(guarded, "../outside.txt") == "secret\n"
-    assert beside.read_text(encoding="utf-8") == "written"
+    with pytest.raises(OutsideBoundaryError, match="mcp-shell-grant"):
+        files.file_write(guarded, str(beside), "written")
+
+    assert not beside.exists()
 
 
 def test_open_mode_deletes_outside_the_roots(guarded: Workspace) -> None:

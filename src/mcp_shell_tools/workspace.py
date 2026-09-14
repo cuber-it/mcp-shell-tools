@@ -1,8 +1,10 @@
 """What the tools share: the working directory, the boundary, the limits.
 
-Every path a tool touches is resolved here and checked against the
-:class:`~mcp_shell_tools.boundary.Boundary`, including every hit a search
-pattern turns up. No tool checks a path on its own.
+Every path a tool touches is resolved here and checked against the boundary in
+force, including every hit a search pattern turns up. No tool checks a path on
+its own. The boundary in force is the configured one as a grant changes it
+(:mod:`mcp_shell_tools.grant`); the grant file itself is out of every tool's
+reach for changes.
 """
 
 from __future__ import annotations
@@ -12,7 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from mcp_shell_tools.boundary import DEFAULT_MODE, Access, Boundary
-from mcp_shell_tools.errors import OutsideBoundaryError, ToolError
+from mcp_shell_tools.errors import NotPermittedError, OutsideBoundaryError, ToolError
+from mcp_shell_tools.grant import PROGRAM, boundary_in_force, grant_file, hint
 
 SKIPPED = frozenset({".git", "__pycache__", ".venv", "node_modules", ".mypy_cache"})
 
@@ -28,12 +31,12 @@ class Workspace:
 
     Attributes:
         working_dir: Directory relative paths are resolved against.
-        boundary: How far the tools may reach.
+        boundary: How far the tools may reach, before any grant.
         timeout: Seconds a command may run.
         max_output: Characters of output kept before it is cut.
         max_results: Rows a listing or search returns at most.
         notes: Notes kept by the note tools, in order.
-        state_dir: Where sessions and the trash are written.
+        state_dir: Where sessions, the trash and the grant are kept.
     """
 
     working_dir: Path
@@ -44,20 +47,37 @@ class Workspace:
     notes: list[str] = field(default_factory=list)
     state_dir: Path | None = None
 
+    def current(self) -> Boundary:
+        """Return the boundary in force: the configured one as a grant changes it.
+
+        Raises:
+            GrantError: A grant file is there but cannot be used.
+        """
+        return boundary_in_force(self.boundary, self.state_dir)
+
     def resolve(self, path: str, access: Access = Access.READ) -> Path:
         """Turn a path from a caller into an absolute one and check it.
 
         Raises:
-            OutsideBoundaryError: The boundary does not let this access reach
-                the path.
+            NotPermittedError: The access would change the grant file.
+            OutsideBoundaryError: The boundary in force does not let this access
+                reach the path. The message names the grant that would.
+            GrantError: A grant file is there but cannot be used.
         """
         candidate = Path(path).expanduser()
         if not candidate.is_absolute():
             candidate = self.working_dir / candidate
         resolved = candidate.resolve()
-        if not self.boundary.admits(resolved, access):
+        if self._reaches_grant(resolved, access):
+            raise NotPermittedError(
+                f"{resolved} holds the grant file, which only {PROGRAM} on the "
+                "host changes"
+            )
+        if not self.current().admits(resolved, access):
+            nearest = resolved if resolved.is_dir() else resolved.parent
             raise OutsideBoundaryError(
-                f"outside the allowed roots for {access}: {resolved}"
+                f"outside the allowed roots for {access}: {resolved}; "
+                + hint(self.state_dir, f"--root {nearest}")
             )
         return resolved
 
@@ -105,16 +125,36 @@ class Workspace:
     def within(self, root: Path, hit: Path, access: Access = Access.READ) -> bool:
         """Say whether something found below root may be shown or touched.
 
-        A hit is rejected when it lies in a skipped directory below root, or
-        when the boundary does not let this access reach it. A ``..`` in a
-        pattern or a symlink on the way can lead anywhere, so the hit is
-        resolved and checked like a path a caller named. Only the part below
-        root counts for skipping: a root that itself lies inside ``.venv`` is
-        still searched.
+        A hit is rejected when it lies in a skipped directory below root, when
+        a changing access would reach the grant file, or when the boundary in
+        force does not let this access reach it. A ``..`` in a pattern or a
+        symlink on the way can lead anywhere, so the hit is resolved and
+        checked like a path a caller named. Only the part below root counts
+        for skipping: a root that itself lies inside ``.venv`` is still
+        searched.
+
+        Raises:
+            GrantError: A grant file is there but cannot be used.
         """
         if any(part in SKIPPED for part in hit.relative_to(root).parts):
             return False
-        return self.boundary.admits(hit.resolve(), access)
+        resolved = hit.resolve()
+        if self._reaches_grant(resolved, access):
+            return False
+        return self.current().admits(resolved, access)
+
+    def permit_execute(self) -> None:
+        """Check that shell commands may run.
+
+        Raises:
+            NotPermittedError: Commands are switched off. The message names the
+                grant that would switch them on.
+            GrantError: A grant file is there but cannot be used.
+        """
+        if not self.current().execute:
+            raise NotPermittedError(
+                "shell commands are switched off; " + hint(self.state_dir, "--exec")
+            )
 
     def state(self) -> Path:
         """Return the state directory.
@@ -134,11 +174,26 @@ class Workspace:
         """
         return self.state() / TRASH
 
+    def _reaches_grant(self, resolved: Path, access: Access) -> bool:
+        """Say whether a changing access would reach the grant file.
+
+        Writing reaches it through the file itself or through its directory,
+        where a copy would land on it. Destroying reaches it through every
+        directory above it, because deleting or moving one takes the file
+        along.
+        """
+        if access is Access.READ or self.state_dir is None:
+            return False
+        held = grant_file(self.state_dir)
+        if access is Access.WRITE:
+            return resolved in (held, held.parent)
+        return resolved == held or resolved in held.parents
+
 
 def workspace_from(config: dict[str, Any]) -> Workspace:
     """Build the workspace from a configuration mapping.
 
-    The boundary is read from ``allowed_roots`` and ``mode``.
+    The boundary is read from ``allowed_roots``, ``mode`` and ``execute``.
 
     Raises:
         ToolError: ``working_dir`` names something that is not a directory, or
@@ -154,7 +209,11 @@ def workspace_from(config: dict[str, Any]) -> Workspace:
     state = config.get("state_dir")
     return Workspace(
         working_dir=working,
-        boundary=Boundary(roots, str(config.get("mode", DEFAULT_MODE))),
+        boundary=Boundary(
+            roots,
+            str(config.get("mode", DEFAULT_MODE)),
+            bool(config.get("execute", True)),
+        ),
         timeout=float(config.get("timeout", DEFAULT_TIMEOUT)),
         max_output=int(config.get("max_output", DEFAULT_MAX_OUTPUT)),
         max_results=int(config.get("max_results", DEFAULT_MAX_RESULTS)),

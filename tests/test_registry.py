@@ -64,12 +64,16 @@ def test_every_tool_carries_a_description(tools: Catalogue) -> None:
     assert [name for name, tool in tools.items() if not tool.__doc__] == []
 
 
-def test_every_description_carries_the_german_words(tools: Catalogue) -> None:
-    without = [
-        name for name, tool in tools.items() if "Auf Deutsch:" not in tool.__doc__
-    ]
+def test_every_description_has_english_german_and_search_words(
+    tools: Catalogue,
+) -> None:
+    incomplete = []
+    for name, tool in tools.items():
+        paragraphs = [part.strip() for part in tool.__doc__.split("\n\n")]
+        if len(paragraphs) < 3 or not paragraphs[-1].startswith("Stichworte:"):
+            incomplete.append(name)
 
-    assert without == []
+    assert not incomplete
 
 
 def test_the_tools_do_their_work(tools: Catalogue, tmp_path: Path) -> None:

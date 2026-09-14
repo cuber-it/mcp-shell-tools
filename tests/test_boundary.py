@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from mcp_shell_tools import Boundary, NotPermittedError, ToolError
+from mcp_shell_tools import Boundary, ToolError
 from mcp_shell_tools.boundary import Access
 
 ROOT = Path("/srv/inside")
@@ -29,7 +29,7 @@ def test_an_unknown_mode_is_refused() -> None:
         ("open", Access.WRITE, True),
         ("open", Access.DESTROY, True),
         ("guarded", Access.READ, True),
-        ("guarded", Access.WRITE, True),
+        ("guarded", Access.WRITE, False),
         ("guarded", Access.DESTROY, False),
         ("strict", Access.READ, False),
         ("strict", Access.WRITE, False),
@@ -58,13 +58,3 @@ def test_a_sibling_with_a_shared_prefix_is_outside() -> None:
 
 def test_without_roots_even_strict_admits_everything() -> None:
     assert Boundary(mode="strict").admits(OUTSIDE, Access.DESTROY)
-
-
-@pytest.mark.parametrize("mode", ["open", "guarded"])
-def test_commands_run_unless_strict(mode: str) -> None:
-    Boundary((ROOT,), mode).permit_execute()
-
-
-def test_strict_mode_runs_no_commands() -> None:
-    with pytest.raises(NotPermittedError):
-        Boundary(mode="strict").permit_execute()

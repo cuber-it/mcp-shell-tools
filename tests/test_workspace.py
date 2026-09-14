@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pytest
 
 from mcp_shell_tools import (
     Boundary,
+    GrantError,
+    NotPermittedError,
     OutsideBoundaryError,
     ToolError,
     Workspace,
     workspace_from,
 )
 from mcp_shell_tools.boundary import Access
+from mcp_shell_tools.grant import GRANT_FILE, Grant, write_grant
 
 
 def test_a_relative_path_is_taken_from_the_working_directory(
@@ -66,13 +70,103 @@ def test_the_refusal_names_the_access(bounded: Workspace) -> None:
         bounded.resolve("/etc/hostname", Access.DESTROY)
 
 
-def test_guarded_resolves_reading_outside_but_not_destroying(
+def test_guarded_resolves_reading_outside_but_not_changing(
     guarded: Workspace,
 ) -> None:
     assert guarded.resolve("../outside.txt").name == "outside.txt"
 
+    for access in (Access.WRITE, Access.DESTROY):
+        with pytest.raises(OutsideBoundaryError):
+            guarded.resolve("../outside.txt", access)
+
+
+def test_the_refusal_names_the_grant_that_would_allow_it(guarded: Workspace) -> None:
+    parent = guarded.working_dir.parent
+
+    with pytest.raises(OutsideBoundaryError) as refused:
+        guarded.resolve("../outside.txt", Access.WRITE)
+
+    expected = f"mcp-shell-grant --state-dir {guarded.state_dir} set --root {parent}"
+    assert expected in str(refused.value)
+
+
+def test_a_grant_lets_writing_reach_an_added_root(guarded: Workspace) -> None:
+    parent = guarded.working_dir.parent
+    write_grant(guarded.state(), Grant(time.time() + 60, roots=(parent,)))
+
+    assert guarded.resolve("../outside.txt", Access.WRITE) == parent / "outside.txt"
+
+
+def test_a_lapsed_grant_reaches_no_further(guarded: Workspace) -> None:
+    parent = guarded.working_dir.parent
+    write_grant(guarded.state(), Grant(time.time() - 1, roots=(parent,)))
+
     with pytest.raises(OutsideBoundaryError):
-        guarded.resolve("../outside.txt", Access.DESTROY)
+        guarded.resolve("../outside.txt", Access.WRITE)
+
+
+def test_an_unusable_grant_file_refuses_even_reading(guarded: Workspace) -> None:
+    guarded.state().mkdir()
+    (guarded.state() / GRANT_FILE).write_text("not json", encoding="utf-8")
+
+    with pytest.raises(GrantError):
+        guarded.resolve("a.txt")
+
+
+@pytest.mark.parametrize("mode", ["open", "guarded"])
+def test_the_grant_file_is_out_of_reach_for_changes(tmp_path: Path, mode: str) -> None:
+    state = tmp_path / "state"
+    space = Workspace(
+        working_dir=tmp_path, boundary=Boundary(mode=mode), state_dir=state
+    )
+    held = write_grant(state, Grant(time.time() + 60, execute=True))
+
+    assert space.resolve(str(held)) == held
+    refused = [
+        (held, Access.WRITE),
+        (state, Access.WRITE),
+        (held, Access.DESTROY),
+        (state, Access.DESTROY),
+        (tmp_path, Access.DESTROY),
+    ]
+    for target, access in refused:
+        with pytest.raises(NotPermittedError, match="grant file"):
+            space.resolve(str(target), access)
+
+
+def test_writing_above_the_state_directory_is_not_mistaken_for_the_grant(
+    space: Workspace, tmp_path: Path
+) -> None:
+    write_grant(space.state(), Grant(time.time() + 60, execute=True))
+
+    assert space.resolve(str(tmp_path), Access.WRITE) == tmp_path
+    assert space.resolve("beside.txt", Access.WRITE) == tmp_path / "beside.txt"
+
+
+def test_globbing_for_changes_passes_over_the_grant_file(space: Workspace) -> None:
+    held = write_grant(space.state(), Grant(time.time() + 60, execute=True))
+
+    assert held in space.glob(space.state(), "*")
+    assert held not in space.glob(space.state(), "*", Access.DESTROY)
+
+
+def test_switched_off_commands_are_refused_with_the_grant(tmp_path: Path) -> None:
+    space = Workspace(
+        working_dir=tmp_path, boundary=Boundary(execute=False), state_dir=tmp_path
+    )
+
+    with pytest.raises(NotPermittedError, match=r"set --exec --for 1h"):
+        space.permit_execute()
+
+
+def test_a_grant_switches_commands_on(tmp_path: Path) -> None:
+    space = Workspace(
+        working_dir=tmp_path, boundary=Boundary(execute=False), state_dir=tmp_path
+    )
+    write_grant(tmp_path, Grant(time.time() + 60, execute=True))
+
+    assert space.current().execute is True
+    assert space.permit_execute() is None
 
 
 def test_an_existing_path_is_returned(space: Workspace, tmp_path: Path) -> None:
@@ -179,13 +273,14 @@ def test_configuration_is_read(tmp_path: Path) -> None:
             "working_dir": str(tmp_path),
             "allowed_roots": [str(tmp_path)],
             "mode": "strict",
+            "execute": False,
             "timeout": 5,
             "max_output": 7,
         }
     )
 
     assert space.working_dir == tmp_path
-    assert space.boundary == Boundary((tmp_path,), "strict")
+    assert space.boundary == Boundary((tmp_path,), "strict", execute=False)
     assert space.timeout == 5
     assert space.max_output == 7
 

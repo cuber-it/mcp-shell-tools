@@ -62,6 +62,22 @@ def render(rows: list[str], limit: int, empty: str) -> str:
     return "\n".join(rows[:limit] + [f"[... {dropped} more]"])
 
 
+def span(seconds: int) -> str:
+    """Render a number of seconds as days, hours and minutes.
+
+    Returns:
+        For instance ``2d 3h 5m``, ``3h 5m`` or ``5m``; below a minute ``0m``.
+    """
+    minutes = max(seconds, 0) // 60
+    days, minutes = divmod(minutes, 1440)
+    hours, minutes = divmod(minutes, 60)
+    if days:
+        return f"{days}d {hours}h {minutes}m"
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
+
+
 def size(value: float) -> str:
     """Render a byte count in the largest unit that keeps it readable.
 

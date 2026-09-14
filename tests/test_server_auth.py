@@ -88,6 +88,8 @@ def served(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Served]:
             str(port),
             "--working-dir",
             str(work),
+            "--state-dir",
+            str(work / "state"),
         ]
         with subprocess.Popen(
             command, env=env, stdout=output, stderr=output

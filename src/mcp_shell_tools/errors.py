@@ -14,4 +14,8 @@ class OutsideBoundaryError(ToolError):
 
 
 class NotPermittedError(ToolError):
-    """The mode this installation runs in does not permit the action."""
+    """The boundary in force does not permit the action at all."""
+
+
+class GrantError(ToolError):
+    """A grant cannot be written, read or understood."""

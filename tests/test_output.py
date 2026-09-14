@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from mcp_shell_tools import ToolError
-from mcp_shell_tools.output import cut, read_text, render, size, text_or_none
+from mcp_shell_tools.output import cut, read_text, render, size, span, text_or_none
 
 
 def test_short_text_is_left_alone() -> None:
@@ -36,6 +36,20 @@ def test_rows_beyond_the_limit_are_counted() -> None:
 
 def test_no_rows_give_the_empty_line() -> None:
     assert render([], 5, "nothing") == "nothing"
+
+
+@pytest.mark.parametrize(
+    ("seconds", "shown"),
+    [
+        (-5, "0m"),
+        (59, "0m"),
+        (61, "1m"),
+        (3 * 3600 + 300, "3h 5m"),
+        (90061, "1d 1h 1m"),
+    ],
+)
+def test_a_span_is_rendered_in_days_hours_and_minutes(seconds: int, shown: str) -> None:
+    assert span(seconds) == shown
 
 
 def test_sizes_are_rendered_in_every_unit() -> None:

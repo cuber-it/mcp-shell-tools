@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 import pytest
 
-from mcp_shell_tools import ToolError, Workspace, edit
+from mcp_shell_tools import NotPermittedError, ToolError, Workspace, edit
+from mcp_shell_tools.grant import Grant, write_grant
 
 
 def test_replacing_changes_the_one_passage(space: Workspace, tmp_path: Path) -> None:
@@ -150,6 +152,29 @@ def test_guarded_dry_run_looks_out_of_bounds(guarded: Workspace) -> None:
     out = edit.find_replace(guarded, "secret", "open", ".", "../*")
 
     assert "outside.txt" in out
+
+
+def test_find_replace_around_the_state_directory_leaves_the_grant(
+    space: Workspace, tmp_path: Path
+) -> None:
+    held = write_grant(space.state(), Grant(time.time() + 60, execute=True))
+    before = held.read_text(encoding="utf-8")
+    (tmp_path / "a.txt").write_text('"execute": true', encoding="utf-8")
+
+    edit.find_replace(space, "true", "false", ".", "*", apply=True)
+
+    assert (tmp_path / "a.txt").read_text(encoding="utf-8") == '"execute": false'
+    assert held.read_text(encoding="utf-8") == before
+
+
+def test_find_replace_on_the_grant_file_itself_is_refused(space: Workspace) -> None:
+    held = write_grant(space.state(), Grant(time.time() + 60, execute=True))
+    before = held.read_text(encoding="utf-8")
+
+    with pytest.raises(NotPermittedError, match="grant file"):
+        edit.find_replace(space, "true", "false", str(held), apply=True)
+
+    assert held.read_text(encoding="utf-8") == before
 
 
 def test_find_replace_says_when_the_limit_stopped_it(tmp_path: Path) -> None:

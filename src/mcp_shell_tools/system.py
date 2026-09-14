@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import platform
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import psutil
 
 from mcp_shell_tools.errors import ToolError
-from mcp_shell_tools.output import cut, render, size
+from mcp_shell_tools.output import cut, render, size, span
 from mcp_shell_tools.workspace import Workspace
 
 
@@ -73,7 +73,8 @@ def sysinfo(space: Workspace) -> str:
         f"swap:     {size(swap.used)} of {size(swap.total)}",
         f"disk:     {size(disk.used)} of {size(disk.total)} "
         f"({disk.percent:.0f}%) at {space.working_dir}",
-        f"uptime:   {_duration(uptime)}, booted {booted:%Y-%m-%d %H:%M}",
+        f"uptime:   {span(int(uptime.total_seconds()))}, "
+        f"booted {booted:%Y-%m-%d %H:%M}",
         f"load:     {load[0]:.2f} {load[1]:.2f} {load[2]:.2f}",
     ]
     return "\n".join(lines)
@@ -177,15 +178,3 @@ def _process_name(pid: int | None) -> str:
         return psutil.Process(pid).name()
     except (psutil.NoSuchProcess, psutil.AccessDenied):
         return "-"
-
-
-def _duration(span: timedelta) -> str:
-    """Render a timespan as days, hours and minutes."""
-    minutes = int(span.total_seconds() // 60)
-    days, minutes = divmod(minutes, 1440)
-    hours, minutes = divmod(minutes, 60)
-    if days:
-        return f"{days}d {hours}h {minutes}m"
-    if hours:
-        return f"{hours}h {minutes}m"
-    return f"{minutes}m"

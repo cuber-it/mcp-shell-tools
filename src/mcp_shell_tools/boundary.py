@@ -1,4 +1,4 @@
-"""How far the tools may reach: the roots, the mode, and the kind of access.
+"""How far the tools may reach: the roots, the mode, and whether commands run.
 
 This is the one place that decides. A tool names what it is about to do with a
 path, and the boundary answers. It knows nothing about the tools, so a policy
@@ -7,11 +7,12 @@ of another kind can take its place later without touching them.
 How far the roots reach depends on the mode:
 
 - ``open`` ignores them.
-- ``guarded`` lets reading and writing go anywhere and confines destroying
+- ``guarded`` lets reading go anywhere and confines writing and destroying
   access (deleting, moving, replacing across files) to them.
-- ``strict`` confines every access to them and runs no commands.
+- ``strict`` confines every access to them.
 
-Empty roots mean no limit in every mode.
+Empty roots mean no limit in every mode. Whether shell commands run is a
+setting of its own, because a command reaches past any path check.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from mcp_shell_tools.errors import NotPermittedError, ToolError
+from mcp_shell_tools.errors import ToolError
 
 MODES = ("open", "guarded", "strict")
 DEFAULT_MODE = "guarded"
@@ -36,15 +37,17 @@ class Access(StrEnum):
 
 @dataclass(frozen=True)
 class Boundary:
-    """The roots the tools are confined to, and how far that reaches.
+    """The roots the tools are confined to, how far that reaches, and commands.
 
     Attributes:
         roots: Directories the tools are confined to, empty for no limit.
         mode: How far the roots reach, one of :data:`MODES`.
+        execute: Whether shell commands may run.
     """
 
     roots: tuple[Path, ...] = ()
     mode: str = DEFAULT_MODE
+    execute: bool = True
 
     def __post_init__(self) -> None:
         """Refuse a mode that does not exist.
@@ -59,15 +62,6 @@ class Boundary:
         """Say whether this access may reach a resolved path."""
         if not self.roots or self.mode == "open":
             return True
-        if self.mode == "guarded" and access is not Access.DESTROY:
+        if self.mode == "guarded" and access is Access.READ:
             return True
         return any(resolved == root or root in resolved.parents for root in self.roots)
-
-    def permit_execute(self) -> None:
-        """Check that commands may run.
-
-        Raises:
-            NotPermittedError: The mode is ``strict``.
-        """
-        if self.mode == "strict":
-            raise NotPermittedError("commands are not run in strict mode")
