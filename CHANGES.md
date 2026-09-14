@@ -1,5 +1,14 @@
 # Changes
 
+## dfac9ae
+
+- Boundary in its own module: roots, mode and kind of access decide
+- Modes `open`, `guarded` (default) and `strict`; guarded confines deleting,
+  moving and `find_replace` with `apply` to the roots, strict also reading,
+  writing and commands
+- `file_delete` moves into `trash` under `state_dir` instead of removing
+- Server option `--mode`; the legacy SSE transport is gone
+
 ## 9147a90
 
 - Library split into errors, workspace, output and the tool modules
