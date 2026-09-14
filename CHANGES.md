@@ -1,5 +1,20 @@
 # Changes
 
+## 97dc6b1
+
+- `guarded` now confines writing as well as deleting and moving; reading stays
+  free
+- Shell commands are a switch of their own (`execute`), apart from the mode
+- `mcp-shell-grant set|show|reset` raises or lowers the boundary of a running
+  server for a required duration, through `grant.json` in the state directory
+- The tools cannot change the grant file; an unusable grant file refuses every
+  check
+- A refusal names the `mcp-shell-grant` command that would lift it
+- Server defaults: root is the home directory, commands off (`--exec` switches
+  them on), state directory `~/.mcp-shell-tools`
+- Tool descriptions carry an English and a German paragraph and search words;
+  the server instructions are bilingual
+
 ## fafef45
 
 - HTTP server as OAuth resource server, configured through `MCP_OAUTH_ENABLED`,
