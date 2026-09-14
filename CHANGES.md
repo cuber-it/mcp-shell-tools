@@ -1,5 +1,18 @@
 # Changes
 
+## fafef45
+
+- HTTP server as OAuth resource server, configured through `MCP_OAUTH_ENABLED`,
+  `MCP_OAUTH_SERVER_URL`, `MCP_PUBLIC_URL` and `MCP_AUTH_METHOD`
+- Token checks exchangeable: `server/auth.py` holds them without the SDK;
+  `introspection` (RFC 7662, five-minute memory) is the first
+- Resource is the public URL plus the endpoint path; scope `user` required
+- Refuses to listen beyond this machine without authentication
+- HTTP is sessionless; `--host` and `--port` default to `MCP_HOST` and
+  `MCP_PORT`
+- The SDK is imported at the top of `server/app.py`; the lazy import with its
+  own error message is gone
+
 ## dfac9ae
 
 - Boundary in its own module: roots, mode and kind of access decide
