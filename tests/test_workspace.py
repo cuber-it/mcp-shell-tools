@@ -17,7 +17,7 @@ from mcp_shell_tools import (
     workspace_from,
 )
 from mcp_shell_tools.boundary import Access
-from mcp_shell_tools.grant import GRANT_FILE, Grant, write_grant
+from mcp_shell_tools.grant import GRANT_FILE, Grant, grant_call, write_grant
 
 
 def test_a_relative_path_is_taken_from_the_working_directory(
@@ -124,7 +124,7 @@ def test_the_refusal_names_the_grant_that_would_allow_it(guarded: Workspace) -> 
     with pytest.raises(OutsideBoundaryError) as refused:
         guarded.resolve("../outside.txt", Access.WRITE)
 
-    expected = f"grant.sh --state-dir {guarded.state_dir} set --root {parent}"
+    expected = f"{grant_call()} --state-dir {guarded.state_dir} set --root {parent}"
     assert expected in str(refused.value)
 
 

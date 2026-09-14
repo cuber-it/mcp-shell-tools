@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
 
 from mcp_shell_tools import Boundary, OutsideBoundaryError, ToolError, Workspace, files
+from mcp_shell_tools.grant import grant_call
 
 
 def test_reading_returns_the_content(space: Workspace, tmp_path: Path) -> None:
@@ -222,7 +224,7 @@ def test_guarded_mode_reads_outside_but_writes_only_inside(guarded: Workspace) -
     beside = guarded.working_dir.parent / "beside.txt"
 
     assert files.file_read(guarded, "../outside.txt") == "secret\n"
-    with pytest.raises(OutsideBoundaryError, match="scripts/grant.sh"):
+    with pytest.raises(OutsideBoundaryError, match=re.escape(grant_call())):
         files.file_write(guarded, str(beside), "written")
 
     assert not beside.exists()
