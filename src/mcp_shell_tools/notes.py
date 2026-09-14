@@ -1,8 +1,7 @@
 """Notes and saved sessions.
 
-Notes live in the workspace and are gone when the process ends — they are a
-scratchpad for one stretch of work. Sessions are written to disk, so they
-outlive the process; that is the whole difference between the two.
+Notes live in the workspace and end with the process. Sessions are written to
+the state directory and outlive it.
 """
 
 from __future__ import annotations

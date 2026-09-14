@@ -14,9 +14,8 @@ from mcp_shell_tools.workspace import Workspace
 def shell_exec(space: Workspace, command: str, timeout: float = 0) -> str:
     """Run a shell command in the working directory and return its output.
 
-    Standard output and standard error come back together, because a caller
-    reading a failure needs both. The exit status is named when it is not
-    zero: a command that failed must not look like one that said nothing.
+    Standard output and standard error come back together; a non-zero exit
+    status is appended.
 
     Returns:
         The output, with the exit status if it was not zero.
@@ -83,8 +82,7 @@ def env(space: Workspace, name: str = "") -> str:
 def set_env(space: Workspace, name: str, value: str) -> str:
     """Set an environment variable for the commands that follow.
 
-    It holds as long as this process runs and is gone afterwards, because the
-    environment belongs to the process, not to a file.
+    It holds until the process ends.
 
     Raises:
         ToolError: The name is empty or not usable as a variable name.

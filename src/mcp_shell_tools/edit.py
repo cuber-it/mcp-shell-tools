@@ -12,11 +12,9 @@ from mcp_shell_tools.workspace import Workspace
 
 
 def str_replace(space: Workspace, path: str, old: str, new: str) -> str:
-    """Replace a passage in a file, once and only once.
+    """Replace a passage that appears exactly once in a file.
 
-    The passage has to appear exactly one time. Anything else is refused: no
-    match means the caller is looking at a different file than they think, and
-    several matches mean the change is ambiguous.
+    No match and several matches are both refused.
 
     Raises:
         ToolError: The passage is missing, ambiguous, or the file is
@@ -68,9 +66,8 @@ def find_replace(
 ) -> str:
     """Replace a passage in every matching file, dry run by default.
 
-    Nothing is written unless apply is true. A run across many files is the
-    kind of change one wants to read before it happens. The run stops once
-    the result limit of affected files is reached, and says so.
+    Nothing is written unless apply is true. The run stops once the result
+    limit of affected files is reached, and says so.
 
     Returns:
         One line per affected file with the number of replacements, and

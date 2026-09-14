@@ -67,13 +67,11 @@ def _files(space: Workspace) -> Catalogue:
         """Write text to a file, replacing whatever was there.
 
         Missing parent directories are created. Prefer this over echoing into
-        a file from a shell command: a heredoc inside a long command line is
-        where quoting goes wrong.
+        a file from a shell command.
 
         Schreibt Text in eine Datei und ersetzt, was dort stand. Fehlende
         Elternverzeichnisse werden angelegt. Besser als echo aus einem
-        Shell-Befehl: Ein Heredoc in einer langen Befehlszeile ist die Stelle,
-        an der das Quoting schiefgeht.
+        Shell-Befehl.
 
         Stichworte: Datei schreiben, speichern, anlegen, überschreiben, ablegen.
         """
@@ -102,11 +100,13 @@ def _files(space: Workspace) -> Catalogue:
         """Delete a file, or a directory with everything below it.
 
         It goes to the trash under the state directory, not away for good. The
-        answer names where it went, and file_move brings it back.
+        answer names where it went, and file_move brings it back. A symlink is
+        deleted itself, not what it points to.
 
         Löscht eine Datei oder ein Verzeichnis mit allem darunter. Der Eintrag
         wandert in den Papierkorb im Zustandsverzeichnis und ist nicht
-        endgültig weg. Die Antwort nennt, wohin; file_move holt ihn zurück.
+        endgültig weg. Die Antwort nennt, wohin; file_move holt ihn zurück. Ein
+        Symlink wird selbst gelöscht, nicht sein Ziel.
 
         Stichworte: Datei löschen, entfernen, Verzeichnis wegräumen, Papierkorb.
         """
@@ -202,14 +202,12 @@ def _editing(space: Workspace) -> Catalogue:
     def str_replace(path: str, old: str, new: str) -> str:
         """Replace one passage in a file with another.
 
-        The passage must appear exactly once. No match or several matches are
-        refused rather than guessed, because both mean the caller and the file
-        disagree about what is there.
+        The passage must appear exactly once; no match and several matches are
+        both refused.
 
         Ersetzt eine Textstelle in einer Datei durch eine andere. Die Stelle
-        muss genau einmal vorkommen. Kein Treffer oder mehrere werden abgelehnt
-        statt geraten, weil beides heißt, dass Aufrufer und Datei sich über den
-        Inhalt uneinig sind.
+        muss genau einmal vorkommen; kein Treffer und mehrere Treffer werden
+        abgelehnt.
 
         Stichworte: Text ersetzen, ändern, austauschen, Stelle bearbeiten.
         """
@@ -290,17 +288,15 @@ def _running(space: Workspace) -> Catalogue:
         """Run a shell command in the working directory.
 
         Standard output and standard error come back together, and a non-zero
-        exit status is named, so a failure cannot be mistaken for silence.
-        Give timeout in seconds to override the configured default. Commands
-        are off unless the server was started with --exec or a grant switches
-        them on; the refusal says how.
+        exit status is named. Give timeout in seconds to override the
+        configured default. Commands are off unless the server was started
+        with --exec or a grant switches them on; the refusal says how.
 
         Führt einen Shell-Befehl im Arbeitsverzeichnis aus. Standardausgabe und
         Fehlerausgabe kommen zusammen zurück, ein Exit-Status ungleich null
-        wird genannt, damit ein Fehler nicht wie Schweigen aussieht. timeout in
-        Sekunden ersetzt den eingestellten Standard. Befehle sind aus, solange
-        der Server nicht mit --exec gestartet wurde oder eine Freigabe sie
-        einschaltet; die Ablehnung sagt, wie.
+        wird genannt. timeout in Sekunden ersetzt den eingestellten Standard.
+        Befehle sind aus, solange der Server nicht mit --exec gestartet wurde
+        oder eine Freigabe sie einschaltet; die Ablehnung sagt, wie.
 
         Stichworte: Befehl ausführen, Kommando, Shell, Terminal, starten.
         """

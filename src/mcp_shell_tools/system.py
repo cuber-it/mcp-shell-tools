@@ -15,10 +15,9 @@ from mcp_shell_tools.workspace import Workspace
 
 
 def ps(space: Workspace, name: str = "") -> str:
-    """List running processes, optionally only those matching a name.
+    """List running processes by memory, optionally only those matching a name.
 
-    A process shows its memory, not its CPU share: a share is a measurement
-    over a span of time, and a single listing has no span to measure over.
+    There is no CPU share; a single listing cannot measure one.
 
     Returns:
         One line per process: pid, user, memory, name.
@@ -43,14 +42,13 @@ def ps(space: Workspace, name: str = "") -> str:
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
 
-    empty = f"no process matches '{name}'" if name else "no processes"
-    if not rows:
-        return empty
-
     rows.sort(key=lambda row: row[0], reverse=True)
-    header = f"{'PID':>7}  {'USER':<12} {'MEMORY':>9}  NAME"
-    listing = [header] + [row[1] for row in rows]
-    return cut(render(listing, space.max_results + 1, empty), space.max_output)
+    return _table(
+        space,
+        f"{'PID':>7}  {'USER':<12} {'MEMORY':>9}  NAME",
+        [row for _, row in rows],
+        f"no process matches '{name}'" if name else "no processes",
+    )
 
 
 def sysinfo(space: Workspace) -> str:
@@ -67,7 +65,7 @@ def sysinfo(space: Workspace) -> str:
         f"host:     {platform.node()}",
         f"python:   {platform.python_version()}",
         f"cpu:      {psutil.cpu_count(logical=False) or '?'} cores, "
-        f"{psutil.cpu_count()} threads, {psutil.cpu_percent(None):.1f}% busy",
+        f"{psutil.cpu_count()} threads",
         f"memory:   {size(memory.used)} of {size(memory.total)} "
         f"({memory.percent:.0f}%), {size(memory.available)} available",
         f"swap:     {size(swap.used)} of {size(swap.total)}",
@@ -107,13 +105,13 @@ def port_check(space: Workspace, port: int = 0) -> str:
             f"{conn.pid or '-':>7}  {_process_name(conn.pid)}"
         )
 
-    empty = f"nothing listens on port {port}" if port else "nothing listens"
-    if not rows:
-        return empty
-
     rows.sort()
-    header = f"{'ADDRESS':<28} {'PORT':>6}  {'PID':>7}  PROCESS"
-    return cut(render([header] + rows, space.max_results + 1, empty), space.max_output)
+    return _table(
+        space,
+        f"{'ADDRESS':<28} {'PORT':>6}  {'PID':>7}  PROCESS",
+        rows,
+        f"nothing listens on port {port}" if port else "nothing listens",
+    )
 
 
 def disk_usage(space: Workspace, path: str = ".", depth: int = 1) -> str:
@@ -146,9 +144,7 @@ def disk_usage(space: Workspace, path: str = ".", depth: int = 1) -> str:
 def _measure(target: Path, depth: int) -> dict[Path, int]:
     """Return the total size of every directory down to the given depth.
 
-    One walk, adding each file's size to every ancestor it belongs to. The
-    obvious alternative, measuring each directory on its own, reads the deep
-    files once per level above them.
+    One walk adds each file's size to every ancestor it belongs to.
 
     Returns:
         The size below each directory, the starting one included.
@@ -168,6 +164,13 @@ def _measure(target: Path, depth: int) -> dict[Path, int]:
             if len(parent.relative_to(target).parts) <= depth:
                 sizes[parent] = sizes.get(parent, 0) + amount
     return sizes
+
+
+def _table(space: Workspace, header: str, rows: list[str], empty: str) -> str:
+    """Render rows under a header, within the result and output limits."""
+    if not rows:
+        return empty
+    return cut(render([header, *rows], space.max_results + 1, empty), space.max_output)
 
 
 def _process_name(pid: int | None) -> str:

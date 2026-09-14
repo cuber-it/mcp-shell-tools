@@ -109,5 +109,5 @@ The grant is `grant.json` in the state directory, readable by its owner only:
   above it.
 - A grant file that cannot be read or does not hold a valid grant makes every
   check fail with `GrantError` until it is fixed or removed with
-  `scripts/grant.sh reset`. Ignoring it could lift a restriction it imposes.
+  `scripts/grant.sh reset`.
 - Without a state directory there are no grants, and refusals say so.

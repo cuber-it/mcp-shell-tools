@@ -49,6 +49,18 @@ def test_host_and_port_default_to_the_environment(
     assert (args.host, args.port) == ("0.0.0.0", 12250)
 
 
+def test_an_unusable_port_in_the_environment_is_refused(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("MCP_PORT", "abc")
+
+    with pytest.raises(SystemExit) as refused:
+        app.parse([])
+
+    assert refused.value.code == app.REFUSED
+    assert "invalid int value" in capsys.readouterr().err
+
+
 def test_the_path_defaults_to_mcp_and_can_be_moved() -> None:
     assert app.parse([]).path == "/mcp"
     assert app.parse(["--path", "/shell"]).path == "/shell"

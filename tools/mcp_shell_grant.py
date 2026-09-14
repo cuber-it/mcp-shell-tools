@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """Raise or lower the boundary of a running mcp-shell-tools server.
 
-A person on the host runs this; the tools themselves cannot change a grant. It
-needs the interpreter the server runs with, because it reads and writes grants
-through the server's own library:
+A person on the host runs this, through ``scripts/grant.sh``, which starts it
+with the interpreter of the repository's venv:
 
-    .venv/bin/python tools/mcp_shell_grant.py set --root /opt/data --for 2h
-    .venv/bin/python tools/mcp_shell_grant.py set --exec --for 30m
-    .venv/bin/python tools/mcp_shell_grant.py show
-    .venv/bin/python tools/mcp_shell_grant.py reset
+    scripts/grant.sh set --root /opt/data --for 2h
+    scripts/grant.sh set --exec --for 30m
+    scripts/grant.sh show
+    scripts/grant.sh reset
 
 What a grant changes and how the server reads it is described in
 :mod:`mcp_shell_tools.grant`.

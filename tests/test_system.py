@@ -28,6 +28,12 @@ def test_ps_has_no_column_it_cannot_measure(space: Workspace) -> None:
     assert "CPU" not in system.ps(space).splitlines()[0]
 
 
+def test_sysinfo_claims_no_cpu_share_it_cannot_measure(space: Workspace) -> None:
+    lines = system.sysinfo(space).splitlines()
+
+    assert "%" not in next(line for line in lines if line.startswith("cpu:"))
+
+
 def test_sysinfo_reports_every_line(space: Workspace) -> None:
     out = system.sysinfo(space)
 

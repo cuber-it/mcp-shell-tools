@@ -150,6 +150,40 @@ def test_deleting_the_same_name_twice_keeps_both(
     assert len(list((tmp_path / "state/trash").iterdir())) == 2
 
 
+def test_deleting_a_symlink_moves_the_link_and_keeps_its_target(
+    space: Workspace, tmp_path: Path
+) -> None:
+    (tmp_path / "real.txt").write_text("kept", encoding="utf-8")
+    (tmp_path / "link.txt").symlink_to("real.txt")
+
+    files.file_delete(space, "link.txt")
+
+    trashed = list((tmp_path / "state/trash").iterdir())
+    assert (tmp_path / "real.txt").read_text(encoding="utf-8") == "kept"
+    assert not (tmp_path / "link.txt").is_symlink()
+    assert [entry.is_symlink() for entry in trashed] == [True]
+
+
+def test_deleting_a_dangling_symlink_moves_it_to_the_trash(
+    space: Workspace, tmp_path: Path
+) -> None:
+    (tmp_path / "dangling").symlink_to("nowhere")
+
+    files.file_delete(space, "dangling")
+
+    assert not (tmp_path / "dangling").is_symlink()
+
+
+def test_moving_a_symlink_moves_the_link(space: Workspace, tmp_path: Path) -> None:
+    (tmp_path / "real.txt").write_text("kept", encoding="utf-8")
+    (tmp_path / "link.txt").symlink_to(tmp_path / "real.txt")
+
+    files.file_move(space, "link.txt", "moved.txt")
+
+    assert (tmp_path / "moved.txt").is_symlink()
+    assert (tmp_path / "real.txt").read_text(encoding="utf-8") == "kept"
+
+
 def test_deleting_something_missing_is_refused(space: Workspace) -> None:
     with pytest.raises(ToolError):
         files.file_delete(space, "nowhere")
@@ -334,6 +368,18 @@ def test_file_info_counts_directory_entries(space: Workspace, tmp_path: Path) ->
 
     assert "kind:      directory" in out
     assert "entries:   2" in out
+
+
+def test_file_info_describes_a_symlink_as_a_link(
+    space: Workspace, tmp_path: Path
+) -> None:
+    (tmp_path / "real.txt").write_text("kept", encoding="utf-8")
+    (tmp_path / "link.txt").symlink_to("real.txt")
+
+    out = files.file_info(space, "link.txt")
+
+    assert f"path:      {tmp_path / 'link.txt'}" in out
+    assert "kind:      symlink -> real.txt" in out
 
 
 def test_file_info_on_a_missing_path_is_refused(space: Workspace) -> None:

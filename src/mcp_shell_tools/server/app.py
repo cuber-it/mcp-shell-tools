@@ -38,16 +38,14 @@ INSTRUCTIONS = (
     "Workstation tools: files, editing, searching, running commands, notes "
     "that survive a restart, and a look at the machine. By default reading "
     "reaches the whole system, writing, deleting and moving stay inside the "
-    "allowed roots, and shell commands are off. A refusal names the grant "
-    "command (scripts/grant.sh) that lifts it; a person runs it on the "
-    "host.\n\n"
+    "allowed roots, and shell commands are off. A refusal names the "
+    "scripts/grant.sh call that lifts it; a person runs it on the host.\n\n"
     "Arbeitsplatz-Werkzeuge: Dateien, Bearbeiten, Suchen, Befehle, Notizen, "
-    "die einen Neustart überdauern, und ein Blick auf den Rechner. Standardmäßig "
-    "reicht Lesen durch das ganze System, Schreiben, Löschen und Verschieben "
-    "bleiben in den erlaubten Wurzeln, und Shell-Befehle sind aus. Eine "
-    "Ablehnung nennt den Freigabe-Befehl (scripts/grant.sh), der sie "
-    "aufhebt; ausführen "
-    "muss ihn ein Mensch auf dem Host."
+    "die einen Neustart überdauern, und ein Blick auf den Rechner. "
+    "Standardmäßig reicht Lesen durch das ganze System, Schreiben, Löschen und "
+    "Verschieben bleiben in den erlaubten Wurzeln, und Shell-Befehle sind aus. "
+    "Eine Ablehnung nennt den scripts/grant.sh-Aufruf, der sie aufhebt; "
+    "ausführen muss ihn ein Mensch auf dem Host."
 )
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
@@ -61,8 +59,8 @@ def _anticipated(tool: Tool) -> Tool:
     its own ``ToolError`` reaches the caller carrying its message, while
     anything else is a crash and the caller is told no more than "Error
     executing tool <name>". The tools raise our own ``ToolError``, which would
-    land in that second case. This translates those, and only those: a real
-    crash stays a crash.
+    land in that second case. Only those are translated; any other exception
+    stays a crash.
 
     ``functools.wraps`` carries name, docstring and signature over, and the
     SDK builds description and input schema from them.
@@ -102,9 +100,8 @@ class _Verifier:
 def _auth_arguments(auth: AuthConfig | None) -> dict[str, Any]:
     """Translate the authentication for the SDK's constructor.
 
-    Resource validation stays off. Whether the authorization server names the
-    resource a token was issued for is not established, and switching it on
-    without that would reject every token.
+    Resource validation stays off: it is not established that the authorization
+    server names the resource a token was issued for.
     """
     if auth is None:
         return {}
@@ -160,7 +157,7 @@ def parse(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.environ.get("MCP_PORT", DEFAULT_PORT)),
+        default=os.environ.get("MCP_PORT", str(DEFAULT_PORT)),
         help="HTTP: port to bind (default: MCP_PORT or 8000)",
     )
     parser.add_argument(
@@ -238,8 +235,7 @@ def main(argv: list[str] | None = None) -> int:
         server.run("stdio")
         return 0
 
-    # Sessionless: nothing ties a caller to this process between requests,
-    # and a client of the older revision gets no session to lose either.
+    # Sessionless: nothing ties a caller to this process between requests.
     server.run(
         "streamable-http",
         host=args.host,

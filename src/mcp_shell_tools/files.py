@@ -37,8 +37,7 @@ def file_read(space: Workspace, path: str, start: int = 0, end: int = 0) -> str:
 def file_write(space: Workspace, path: str, content: str) -> str:
     """Write text to a file, replacing what was there.
 
-    Missing parent directories are created, because a caller writing a file
-    into a new directory means both.
+    Missing parent directories are created.
 
     Raises:
         ToolError: The file cannot be written.
@@ -78,8 +77,7 @@ def file_list(space: Workspace, path: str = ".") -> str:
         ToolError: The directory does not exist.
     """
     target = space.directory(path)
-    entries = sorted(target.iterdir(), key=lambda item: (item.is_file(), item.name))
-    rows = [_describe(entry) for entry in entries]
+    rows = [_describe(entry) for entry in _entries(target)]
     return render(rows, space.max_results, f"{target} is empty")
 
 
@@ -87,15 +85,16 @@ def file_delete(space: Workspace, path: str) -> str:
     """Move a file, or a directory with everything in it, to the trash.
 
     Nothing is removed for good. The entry lands in the trash under the state
-    directory, named with the time of deletion, and can be moved back.
+    directory, named with the time of deletion, and can be moved back. A
+    symlink is moved itself, not what it points to.
 
     Raises:
         ToolError: Nothing is there, no state directory is configured, or the
             move fails. A move across filesystems that fails halfway can leave
             a partial copy in the trash; the message names where.
     """
-    target = space.resolve(path, Access.DESTROY)
-    if not target.exists():
+    target = space.locate(path, Access.DESTROY)
+    if not target.exists() and not target.is_symlink():
         raise ToolError(f"nothing to delete at: {target}")
     kept = space.trash() / f"{datetime.now():%Y%m%d-%H%M%S-%f}-{target.name}"
     try:
@@ -110,20 +109,19 @@ def file_delete(space: Workspace, path: str) -> str:
 
 
 def file_move(space: Workspace, source: str, destination: str) -> str:
-    """Move or rename a file or directory.
+    """Move or rename a file or directory; a symlink is moved itself.
 
     Raises:
         ToolError: The source is missing or the move fails.
     """
-    origin = space.resolve(source, Access.DESTROY)
+    origin = space.locate(source, Access.DESTROY)
     return _transfer(origin, space.resolve(destination, Access.DESTROY), move=True)
 
 
 def file_copy(space: Workspace, source: str, destination: str) -> str:
     """Copy a file, or a directory with everything in it.
 
-    Symlinks inside a copied directory are copied as links. Copying what they
-    point to would carry content from outside the allowed roots inside.
+    Symlinks inside a copied directory are copied as links.
 
     Raises:
         ToolError: The source is missing or the copy fails.
@@ -151,7 +149,7 @@ def tree(space: Workspace, path: str = ".", depth: int = 3) -> str:
 
 
 def file_info(space: Workspace, path: str) -> str:
-    """Report what is known about a file or directory.
+    """Report what is known about a file, directory or symlink.
 
     Returns:
         One labelled line per fact: kind, size, permissions, owner, times.
@@ -159,32 +157,36 @@ def file_info(space: Workspace, path: str) -> str:
     Raises:
         ToolError: The entry does not exist.
     """
-    target = space.resolve(path)
+    target = space.locate(path)
     try:
         info = target.lstat()
     except OSError as err:
         raise ToolError(f"could not stat {target}: {err}") from err
 
-    kind = "directory" if target.is_dir() else "file"
     if target.is_symlink():
         kind = f"symlink -> {os.readlink(target)}"
+    else:
+        kind = "directory" if target.is_dir() else "file"
 
     try:
         owner = f"{target.owner()}:{target.group()}"
     except (KeyError, OSError):
         owner = f"{info.st_uid}:{info.st_gid}"
 
+    stamps = {"modified": info.st_mtime, "accessed": info.st_atime}
+    stamps["changed"] = info.st_ctime
     lines = [
         f"path:      {target}",
         f"kind:      {kind}",
         f"size:      {info.st_size} bytes",
         f"mode:      {stat.filemode(info.st_mode)} ({oct(info.st_mode & 0o777)})",
         f"owner:     {owner}",
-        f"modified:  {datetime.fromtimestamp(info.st_mtime):%Y-%m-%d %H:%M:%S}",
-        f"accessed:  {datetime.fromtimestamp(info.st_atime):%Y-%m-%d %H:%M:%S}",
-        f"changed:   {datetime.fromtimestamp(info.st_ctime):%Y-%m-%d %H:%M:%S}",
+        *(
+            f"{label + ':':<11}{datetime.fromtimestamp(stamp):%Y-%m-%d %H:%M:%S}"
+            for label, stamp in stamps.items()
+        ),
     ]
-    if target.is_dir():
+    if kind == "directory":
         try:
             lines.append(f"entries:   {len(list(target.iterdir()))}")
         except OSError:
@@ -218,6 +220,11 @@ def tail(space: Workspace, path: str, lines: int = 10) -> str:
     return cut("\n".join(rows[-max(lines, 1) :]), space.max_output)
 
 
+def _entries(directory: Path) -> list[Path]:
+    """Return the entries of a directory, directories first, then by name."""
+    return sorted(directory.iterdir(), key=lambda item: (item.is_file(), item.name))
+
+
 def _describe(entry: Path) -> str:
     """Return one listing row for a directory entry."""
     if entry.is_dir():
@@ -235,9 +242,7 @@ def _walk(
     if level > depth:
         return
     try:
-        entries = sorted(
-            directory.iterdir(), key=lambda item: (item.is_file(), item.name)
-        )
+        entries = _entries(directory)
     except OSError:
         return
     for entry in entries:
@@ -254,7 +259,7 @@ def _transfer(origin: Path, target: Path, move: bool) -> str:
     Raises:
         ToolError: The source is missing or the transfer fails.
     """
-    if not origin.exists():
+    if not origin.exists() and not origin.is_symlink():
         raise ToolError(f"nothing to transfer at: {origin}")
     verb, infinitive = ("moved", "move") if move else ("copied", "copy")
     try:

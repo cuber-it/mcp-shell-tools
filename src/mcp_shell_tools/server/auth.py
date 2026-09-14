@@ -7,8 +7,8 @@ tokens is one class and one entry in :data:`CHECKS`, chosen with
 
 The first way is token introspection (RFC 7662): the token is handed to the
 authorization server, which says whether it is active and what it stands for.
-Anything but a clear yes rejects the request, so an unreachable authorization
-server closes the door instead of opening it.
+Anything but a clear yes rejects the request, an unreachable authorization
+server included.
 """
 
 from __future__ import annotations
@@ -84,9 +84,8 @@ class AuthConfig:
 class IntrospectionCheck:
     """Asks the authorization server about a token, and remembers briefly.
 
-    Without the memory a sessionless server would ask on every request. The
-    window is short on purpose: a token revoked at the issuer stays usable for
-    at most ``cache_seconds``. Only accepted tokens are remembered.
+    Only accepted tokens are remembered, for at most ``cache_seconds``; a token
+    revoked at the issuer stays usable that long.
     """
 
     def __init__(

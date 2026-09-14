@@ -47,15 +47,15 @@ Lists a directory, directories first, files with their size in bytes.
 
 Moves a file or a directory with everything below it into the trash in the
 state directory, named `<YYYYmmdd-HHMMSS-micro>-<name>`. The answer names where
-it went; `file_move` brings it back. Without a state directory deleting is
-refused.
+it went; `file_move` brings it back. A symlink is moved itself, not what it
+points to. Without a state directory deleting is refused.
 
 ### `file_move`
 
 `file_move(source, destination)`
 
-Moves or renames a file or directory. Missing parent directories of the
-destination are created.
+Moves or renames a file or directory; a symlink is moved itself. Missing parent
+directories of the destination are created.
 
 ### `file_copy`
 
@@ -240,13 +240,13 @@ Lists the saved sessions with their summaries, most recently saved first.
 
 Lists processes with PID, user, resident memory and name, biggest first.
 `name` keeps only processes whose name contains it, ignoring case. There is no
-CPU column: a share needs two measurements, and a listing takes one.
+CPU column.
 
 ### `sysinfo`
 
 `sysinfo()`
 
-Reports system, host, Python version, CPU cores and load, memory, swap, the disk
+Reports system, host, Python version, CPU cores and threads, memory, swap, the disk
 holding the working directory, uptime and load averages.
 
 ### `port_check`

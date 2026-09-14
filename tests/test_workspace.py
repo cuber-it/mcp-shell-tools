@@ -65,6 +65,44 @@ def test_a_link_out_of_the_roots_is_refused(bounded: Workspace) -> None:
         bounded.resolve("link/outside.txt")
 
 
+def test_locating_keeps_a_symlink_at_the_end(space: Workspace, tmp_path: Path) -> None:
+    (tmp_path / "real.txt").write_text("x", encoding="utf-8")
+    (tmp_path / "link.txt").symlink_to("real.txt")
+
+    assert space.locate("link.txt") == tmp_path / "link.txt"
+    assert space.resolve("link.txt") == tmp_path / "real.txt"
+
+
+def test_locating_resolves_the_directories_on_the_way(
+    space: Workspace, tmp_path: Path
+) -> None:
+    (tmp_path / "real").mkdir()
+    (tmp_path / "via").symlink_to("real")
+
+    assert space.locate("via/a.txt") == tmp_path / "real/a.txt"
+
+
+def test_a_link_inside_the_roots_can_be_located_for_destroying(
+    bounded: Workspace,
+) -> None:
+    inside = bounded.working_dir
+    (inside / "link").symlink_to(inside.parent / "outside.txt")
+
+    assert bounded.locate("link", Access.DESTROY) == inside / "link"
+
+
+def test_locating_outside_the_roots_is_refused(bounded: Workspace) -> None:
+    with pytest.raises(OutsideBoundaryError):
+        bounded.locate("../outside.txt", Access.DESTROY)
+
+
+@pytest.mark.parametrize("path", [".", ".."])
+def test_locating_a_dot_path_resolves_it(
+    space: Workspace, tmp_path: Path, path: str
+) -> None:
+    assert space.locate(path) == (tmp_path / path).resolve()
+
+
 def test_the_refusal_names_the_access(bounded: Workspace) -> None:
     with pytest.raises(OutsideBoundaryError, match="for destroy"):
         bounded.resolve("/etc/hostname", Access.DESTROY)

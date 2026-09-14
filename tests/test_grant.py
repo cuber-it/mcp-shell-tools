@@ -16,7 +16,7 @@ import pytest
 from mcp_shell_tools import Boundary, GrantError
 from mcp_shell_tools.grant import (
     GRANT_FILE,
-    PROGRAM,
+    GRANT_SCRIPT,
     Grant,
     boundary_in_force,
     hint,
@@ -166,8 +166,8 @@ def test_the_hint_names_the_script_and_the_change(tmp_path: Path) -> None:
 
 
 def test_the_hint_points_at_the_wrapper_script() -> None:
-    assert PROGRAM == SCRIPT
-    assert PROGRAM.is_file()
+    assert GRANT_SCRIPT == SCRIPT
+    assert GRANT_SCRIPT.is_file()
 
 
 def test_without_a_state_directory_the_hint_says_what_is_missing() -> None:

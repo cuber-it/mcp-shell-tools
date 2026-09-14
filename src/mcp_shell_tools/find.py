@@ -11,7 +11,7 @@ from mcp_shell_tools.workspace import Workspace
 
 
 def glob_search(space: Workspace, pattern: str, path: str = ".") -> str:
-    """Find files whose name matches a pattern.
+    """Find files whose path below the directory matches a glob pattern.
 
     Returns:
         The matching paths, one per line, cut at the result limit.

@@ -15,12 +15,7 @@ from typing import Any
 
 from mcp_shell_tools.boundary import DEFAULT_MODE, Access, Boundary
 from mcp_shell_tools.errors import NotPermittedError, OutsideBoundaryError, ToolError
-from mcp_shell_tools.grant import (
-    boundary_in_force,
-    grant_command,
-    grant_file,
-    hint,
-)
+from mcp_shell_tools.grant import GRANT_SCRIPT, boundary_in_force, grant_file, hint
 
 SKIPPED = frozenset({".git", "__pycache__", ".venv", "node_modules", ".mypy_cache"})
 
@@ -61,7 +56,7 @@ class Workspace:
         return boundary_in_force(self.boundary, self.state_dir)
 
     def resolve(self, path: str, access: Access = Access.READ) -> Path:
-        """Turn a path from a caller into an absolute one and check it.
+        """Turn a path from a caller into an absolute, resolved one and check it.
 
         Raises:
             NotPermittedError: The access would change the grant file.
@@ -69,22 +64,28 @@ class Workspace:
                 reach the path. The message names the grant that would.
             GrantError: A grant file is there but cannot be used.
         """
-        candidate = Path(path).expanduser()
-        if not candidate.is_absolute():
-            candidate = self.working_dir / candidate
-        resolved = candidate.resolve()
-        if self._reaches_grant(resolved, access):
-            raise NotPermittedError(
-                f"{resolved} holds the grant file, which only {grant_command()} "
-                "on the host changes"
-            )
-        if not self.current().admits(resolved, access):
-            nearest = resolved if resolved.is_dir() else resolved.parent
-            raise OutsideBoundaryError(
-                f"outside the allowed roots for {access}: {resolved}; "
-                + hint(self.state_dir, f"--root {nearest}")
-            )
+        resolved = self._absolute(path).resolve()
+        self._check(resolved, access)
         return resolved
+
+    def locate(self, path: str, access: Access = Access.READ) -> Path:
+        """Like :meth:`resolve`, but a symlink at the end stays the link itself.
+
+        For tools that act on a directory entry rather than on what it points
+        to. A path ending in ``..`` is resolved in full.
+
+        Raises:
+            NotPermittedError: The access would change the grant file.
+            OutsideBoundaryError: The boundary in force does not let this access
+                reach the entry.
+            GrantError: A grant file is there but cannot be used.
+        """
+        absolute = self._absolute(path)
+        if absolute.name in ("", ".."):
+            return self.resolve(path, access)
+        located = absolute.parent.resolve() / absolute.name
+        self._check(located, access)
+        return located
 
     def existing(self, path: str, access: Access = Access.READ) -> Path:
         """Resolve a path that has to name something that exists.
@@ -178,6 +179,32 @@ class Workspace:
             ToolError: No state directory is configured.
         """
         return self.state() / TRASH
+
+    def _absolute(self, path: str) -> Path:
+        """Return a path from a caller as an absolute one, not yet resolved."""
+        candidate = Path(path).expanduser()
+        return candidate if candidate.is_absolute() else self.working_dir / candidate
+
+    def _check(self, target: Path, access: Access) -> None:
+        """Refuse an access to a path that the grant file or the boundary forbids.
+
+        Raises:
+            NotPermittedError: The access would change the grant file.
+            OutsideBoundaryError: The boundary in force does not let this access
+                reach the path.
+            GrantError: A grant file is there but cannot be used.
+        """
+        if self._reaches_grant(target, access):
+            raise NotPermittedError(
+                f"{target} holds the grant file, which only {GRANT_SCRIPT} on the "
+                "host changes"
+            )
+        if not self.current().admits(target, access):
+            nearest = target if target.is_dir() else target.parent
+            raise OutsideBoundaryError(
+                f"outside the allowed roots for {access}: {target}; "
+                + hint(self.state_dir, f"--root {nearest}")
+            )
 
     def _reaches_grant(self, resolved: Path, access: Access) -> bool:
         """Say whether a changing access would reach the grant file.

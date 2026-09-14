@@ -1,8 +1,7 @@
 """How far the tools may reach: the roots, the mode, and whether commands run.
 
 This is the one place that decides. A tool names what it is about to do with a
-path, and the boundary answers. It knows nothing about the tools, so a policy
-of another kind can take its place later without touching them.
+path, and the boundary answers. It knows nothing about the tools.
 
 How far the roots reach depends on the mode:
 
@@ -12,7 +11,7 @@ How far the roots reach depends on the mode:
 - ``strict`` confines every access to them.
 
 Empty roots mean no limit in every mode. Whether shell commands run is a
-setting of its own, because a command reaches past any path check.
+separate setting.
 """
 
 from __future__ import annotations

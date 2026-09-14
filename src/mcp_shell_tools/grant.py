@@ -14,8 +14,7 @@ A grant changes the configured boundary in up to three ways:
 - ``execute`` switches shell commands on or off.
 
 Every grant has an end; lasting changes belong in the server's configuration.
-A grant file that cannot be used stops every check instead of being passed
-over, because passing over it could lift a restriction it imposes.
+A grant file that cannot be used stops every check.
 """
 
 from __future__ import annotations
@@ -32,7 +31,7 @@ from mcp_shell_tools.boundary import MODES, Boundary
 from mcp_shell_tools.errors import GrantError
 from mcp_shell_tools.output import span
 
-PROGRAM = Path(__file__).resolve().parents[2] / "scripts" / "grant.sh"
+GRANT_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "grant.sh"
 GRANT_FILE = "grant.json"
 DEFAULT_STATE_DIR = "~/.mcp-shell-tools"
 SUGGESTED_DURATION = "1h"
@@ -223,17 +222,12 @@ def parse_duration(text: str) -> int:
     return int(match[1]) * SECONDS[match[2]]
 
 
-def grant_command() -> str:
-    """Return how grants are set on this host: the path of ``scripts/grant.sh``."""
-    return str(PROGRAM)
-
-
 def hint(state_dir: Path | None, change: str) -> str:
     """Return how a refusal can be lifted, for the message that reports it."""
     if state_dir is None:
         return "grants need a server started with --state-dir"
     return (
-        f"a person on the host can allow it with: {grant_command()} --state-dir "
+        f"a person on the host can allow it with: {GRANT_SCRIPT} --state-dir "
         f"{state_dir} set {change} --for {SUGGESTED_DURATION}"
     )
 
@@ -242,6 +236,6 @@ def _unusable(where: Path, reason: str) -> str:
     """Return the message for a grant file that stops every check."""
     return (
         f"the grant file {where} cannot be used ({reason}); every check is "
-        f"refused until it is fixed or removed with {grant_command()} --state-dir "
+        f"refused until it is fixed or removed with {GRANT_SCRIPT} --state-dir "
         f"{where.parent} reset"
     )
