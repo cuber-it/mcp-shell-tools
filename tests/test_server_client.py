@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 
-from mcp_shell_tools import Workspace
+from mcp_shell_tools import Boundary, Workspace
 from mcp_shell_tools.server import app
 
 MCP = pytest.importorskip("mcp")
@@ -92,7 +92,7 @@ def test_a_boundary_refusal_arrives_with_its_reason(tmp_path: Path) -> None:
     async def work(client: Any) -> Any:
         return await client.call_tool("file_read", {"path": "/etc/hostname"})
 
-    space = Workspace(working_dir=tmp_path, allowed_roots=(tmp_path,))
+    space = Workspace(working_dir=tmp_path, boundary=Boundary((tmp_path,), "strict"))
     answer = served(space, work)
 
     assert answer.is_error

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from mcp_shell_tools import __version__
+from mcp_shell_tools.boundary import DEFAULT_MODE, MODES
 from mcp_shell_tools.errors import ToolError
 from mcp_shell_tools.server.registry import Tool, catalogue
 from mcp_shell_tools.workspace import Workspace, workspace_from
@@ -86,7 +87,7 @@ def parse(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--transport",
-        choices=("stdio", "streamable-http", "sse"),
+        choices=("stdio", "streamable-http"),
         default="stdio",
         help="stdio for a client that starts the server itself, "
         "streamable-http to listen on a port (default: stdio)",
@@ -109,7 +110,17 @@ def parse(argv: list[str] | None = None) -> argparse.Namespace:
         help="Confine the tools to this directory; repeatable. "
         "Without it they may touch the whole disk.",
     )
-    parser.add_argument("--state-dir", default="", help="Where sessions are written")
+    parser.add_argument(
+        "--state-dir", default="", help="Where sessions and the trash are written"
+    )
+    parser.add_argument(
+        "--mode",
+        choices=MODES,
+        default=DEFAULT_MODE,
+        help="open ignores the allowed roots, guarded confines deleting and "
+        "moving to them, strict confines everything and runs no commands "
+        f"(default: {DEFAULT_MODE})",
+    )
     return parser.parse_args(argv)
 
 
@@ -122,6 +133,7 @@ def workspace_from_args(args: argparse.Namespace) -> Workspace:
     settings: dict[str, Any] = {
         "working_dir": args.working_dir,
         "allowed_roots": args.allowed_root,
+        "mode": args.mode,
     }
     if args.state_dir:
         settings["state_dir"] = args.state_dir

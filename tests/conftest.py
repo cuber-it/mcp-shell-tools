@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from mcp_shell_tools import Workspace
+from mcp_shell_tools import Boundary, Workspace
 
 
 @pytest.fixture
@@ -17,7 +17,7 @@ def space(tmp_path: Path) -> Workspace:
 
 @pytest.fixture
 def bounded(tmp_path: Path) -> Workspace:
-    """Return a workspace confined to ``inside``, with ``outside.txt`` beside it.
+    """Return a strict workspace confined to ``inside``, with ``outside.txt`` beside it.
 
     The file outside holds the word ``secret``. A tool that shows or changes
     it has crossed the boundary.
@@ -25,4 +25,12 @@ def bounded(tmp_path: Path) -> Workspace:
     inside = tmp_path / "inside"
     inside.mkdir()
     (tmp_path / "outside.txt").write_text("secret\n", encoding="utf-8")
-    return Workspace(working_dir=inside, allowed_roots=(inside,))
+    return Workspace(working_dir=inside, boundary=Boundary((inside,), "strict"))
+
+
+@pytest.fixture
+def guarded(bounded: Workspace) -> Workspace:
+    """Return the bounded workspace in guarded mode, with a state directory."""
+    bounded.boundary = Boundary(bounded.boundary.roots, "guarded")
+    bounded.state_dir = bounded.working_dir / ".state"
+    return bounded

@@ -8,6 +8,7 @@ import stat
 from datetime import datetime
 from pathlib import Path
 
+from mcp_shell_tools.boundary import Access
 from mcp_shell_tools.errors import ToolError
 from mcp_shell_tools.output import cut, read_text, render
 from mcp_shell_tools.workspace import Workspace
@@ -42,7 +43,7 @@ def file_write(space: Workspace, path: str, content: str) -> str:
     Raises:
         ToolError: The file cannot be written.
     """
-    target = space.resolve(path)
+    target = space.resolve(path, Access.WRITE)
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
@@ -57,7 +58,7 @@ def file_append(space: Workspace, path: str, content: str) -> str:
     Raises:
         ToolError: The file cannot be written.
     """
-    target = space.resolve(path)
+    target = space.resolve(path, Access.WRITE)
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         with target.open("a", encoding="utf-8") as handle:
@@ -83,22 +84,29 @@ def file_list(space: Workspace, path: str = ".") -> str:
 
 
 def file_delete(space: Workspace, path: str) -> str:
-    """Delete a file or a directory with everything in it.
+    """Move a file, or a directory with everything in it, to the trash.
+
+    Nothing is removed for good. The entry lands in the trash under the state
+    directory, named with the time of deletion, and can be moved back.
 
     Raises:
-        ToolError: It does not exist or cannot be removed.
+        ToolError: Nothing is there, no state directory is configured, or the
+            move fails. A move across filesystems that fails halfway can leave
+            a partial copy in the trash; the message names where.
     """
-    target = space.resolve(path)
+    target = space.resolve(path, Access.DESTROY)
     if not target.exists():
         raise ToolError(f"nothing to delete at: {target}")
+    kept = space.trash() / f"{datetime.now():%Y%m%d-%H%M%S-%f}-{target.name}"
     try:
-        if target.is_dir():
-            shutil.rmtree(target)
-            return f"deleted directory {target}"
-        target.unlink()
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(target, kept)
     except OSError as err:
-        raise ToolError(f"could not delete {target}: {err}") from err
-    return f"deleted file {target}"
+        raise ToolError(
+            f"could not move {target} to the trash: {err}; "
+            f"look at {kept} for a partial copy"
+        ) from err
+    return f"moved {target} to the trash: {kept}"
 
 
 def file_move(space: Workspace, source: str, destination: str) -> str:
@@ -107,7 +115,8 @@ def file_move(space: Workspace, source: str, destination: str) -> str:
     Raises:
         ToolError: The source is missing or the move fails.
     """
-    return _transfer(space, source, destination, move=True)
+    origin = space.resolve(source, Access.DESTROY)
+    return _transfer(origin, space.resolve(destination, Access.DESTROY), move=True)
 
 
 def file_copy(space: Workspace, source: str, destination: str) -> str:
@@ -119,7 +128,8 @@ def file_copy(space: Workspace, source: str, destination: str) -> str:
     Raises:
         ToolError: The source is missing or the copy fails.
     """
-    return _transfer(space, source, destination, move=False)
+    origin = space.resolve(source)
+    return _transfer(origin, space.resolve(destination, Access.WRITE), move=False)
 
 
 def tree(space: Workspace, path: str = ".", depth: int = 3) -> str:
@@ -238,14 +248,12 @@ def _walk(
             _walk(space, entry, depth, level + 1, rows)
 
 
-def _transfer(space: Workspace, source: str, destination: str, move: bool) -> str:
+def _transfer(origin: Path, target: Path, move: bool) -> str:
     """Move or copy, whichever was asked for.
 
     Raises:
         ToolError: The source is missing or the transfer fails.
     """
-    origin = space.resolve(source)
-    target = space.resolve(destination)
     if not origin.exists():
         raise ToolError(f"nothing to transfer at: {origin}")
     verb, infinitive = ("moved", "move") if move else ("copied", "copy")

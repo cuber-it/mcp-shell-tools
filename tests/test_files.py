@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from mcp_shell_tools import ToolError, Workspace, files
+from mcp_shell_tools import Boundary, OutsideBoundaryError, ToolError, Workspace, files
 
 
 def test_reading_returns_the_content(space: Workspace, tmp_path: Path) -> None:
@@ -116,28 +116,90 @@ def test_listing_stops_at_the_limit(tmp_path: Path) -> None:
     assert "7 more" in listing
 
 
-def test_deleting_removes_a_file(space: Workspace, tmp_path: Path) -> None:
-    (tmp_path / "a.txt").write_text("x", encoding="utf-8")
+def test_deleting_moves_a_file_to_the_trash(space: Workspace, tmp_path: Path) -> None:
+    (tmp_path / "a.txt").write_text("kept", encoding="utf-8")
 
     files.file_delete(space, "a.txt")
 
+    trashed = list((tmp_path / "state/trash").iterdir())
     assert not (tmp_path / "a.txt").exists()
+    assert [entry.name.endswith("-a.txt") for entry in trashed] == [True]
+    assert trashed[0].read_text(encoding="utf-8") == "kept"
 
 
-def test_deleting_removes_a_directory_with_content(
+def test_deleting_moves_a_directory_with_content_to_the_trash(
     space: Workspace, tmp_path: Path
 ) -> None:
     (tmp_path / "adir").mkdir()
     (tmp_path / "adir/inside").write_text("x", encoding="utf-8")
 
-    files.file_delete(space, "adir")
+    answer = files.file_delete(space, "adir")
 
+    kept = Path(answer.rsplit(": ", 1)[1])
     assert not (tmp_path / "adir").exists()
+    assert (kept / "inside").read_text(encoding="utf-8") == "x"
+
+
+def test_deleting_the_same_name_twice_keeps_both(
+    space: Workspace, tmp_path: Path
+) -> None:
+    for content in ("first", "second"):
+        (tmp_path / "a.txt").write_text(content, encoding="utf-8")
+        files.file_delete(space, "a.txt")
+
+    assert len(list((tmp_path / "state/trash").iterdir())) == 2
 
 
 def test_deleting_something_missing_is_refused(space: Workspace) -> None:
     with pytest.raises(ToolError):
         files.file_delete(space, "nowhere")
+
+
+def test_deleting_without_a_state_directory_is_refused_and_keeps_the_file(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "a.txt").write_text("x", encoding="utf-8")
+
+    with pytest.raises(ToolError, match="no state_dir"):
+        files.file_delete(Workspace(working_dir=tmp_path), "a.txt")
+
+    assert (tmp_path / "a.txt").is_file()
+
+
+def test_guarded_mode_refuses_deleting_outside_the_roots(guarded: Workspace) -> None:
+    outside = guarded.working_dir.parent / "outside.txt"
+
+    with pytest.raises(OutsideBoundaryError):
+        files.file_delete(guarded, str(outside))
+
+    assert outside.is_file()
+
+
+def test_guarded_mode_refuses_moving_out_of_the_roots(guarded: Workspace) -> None:
+    (guarded.working_dir / "a.txt").write_text("x", encoding="utf-8")
+
+    with pytest.raises(OutsideBoundaryError):
+        files.file_move(guarded, "a.txt", "../a.txt")
+
+    assert (guarded.working_dir / "a.txt").is_file()
+
+
+def test_guarded_mode_reads_and_writes_outside_the_roots(guarded: Workspace) -> None:
+    beside = guarded.working_dir.parent / "beside.txt"
+
+    files.file_write(guarded, str(beside), "written")
+
+    assert files.file_read(guarded, "../outside.txt") == "secret\n"
+    assert beside.read_text(encoding="utf-8") == "written"
+
+
+def test_open_mode_deletes_outside_the_roots(guarded: Workspace) -> None:
+    guarded.boundary = Boundary(guarded.boundary.roots, "open")
+    outside = guarded.working_dir.parent / "outside.txt"
+
+    files.file_delete(guarded, str(outside))
+
+    assert not outside.exists()
 
 
 def test_moving_takes_the_file_along(space: Workspace, tmp_path: Path) -> None:

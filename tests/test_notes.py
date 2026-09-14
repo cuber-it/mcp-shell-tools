@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from mcp_shell_tools import OutsideBoundaryError, ToolError, Workspace, notes
+from mcp_shell_tools import Boundary, OutsideBoundaryError, ToolError, Workspace, notes
 
 
 def test_a_note_is_kept_and_shown(space: Workspace) -> None:
@@ -89,7 +89,9 @@ def test_a_refused_resume_changes_nothing(tmp_path: Path) -> None:
     inside = tmp_path / "inside"
     inside.mkdir()
     state = tmp_path / "state"
-    space = Workspace(working_dir=inside, allowed_roots=(inside,), state_dir=state)
+    space = Workspace(
+        working_dir=inside, boundary=Boundary((inside,), "strict"), state_dir=state
+    )
     notes.memory_add(space, "saved note")
     notes.session_save(space, "s")
     saved = state / "s.session.json"

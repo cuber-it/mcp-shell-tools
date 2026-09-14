@@ -84,7 +84,8 @@ print(run.shell_exec(space, "git status --short"))
 
 A tool that will not do what it was asked raises `ToolError` with a sentence
 saying why. `OutsideBoundaryError` is the one case worth catching separately:
-the path was outside `allowed_roots`.
+the boundary does not let the tool reach that path. `NotPermittedError` says the
+mode does not permit the action at all, such as a command in strict mode.
 
 ```python
 from mcp_shell_tools import ToolError
@@ -100,22 +101,31 @@ except ToolError as err:
 ```python
 Workspace(
     working_dir=Path("/home/you/projects"),
-    allowed_roots=(),  # empty means the tools may touch the whole disk
+    boundary=Boundary(roots=(), mode="guarded"),  # empty roots: no limit
     timeout=120.0,  # seconds a command may run
     max_output=200_000,  # characters of output kept
     max_results=200,  # rows a listing or search returns
-    state_dir=None,  # where sessions are written
+    state_dir=None,  # where sessions and the trash are written
 )
 ```
 
-`allowed_roots` confines every path the tools resolve, and every hit a search
-pattern turns up: a `..` in the pattern or a symlink pointing outside does not
-get past it. Left empty there is no
-limit, which is what a workstation tool set is for; set it when the tools are
-reachable by someone who should not have the whole disk.
+The boundary is checked for every path the tools resolve and every hit a
+search pattern turns up, so a `..` in the pattern or a symlink pointing outside
+does not get past it. Empty roots mean no limit. How far the roots reach
+depends on the mode:
+
+| Mode | Reading, writing | Deleting, moving, `find_replace` with `apply` | Commands |
+|---|---|---|---|
+| `open` | anywhere | anywhere | yes |
+| `guarded` (default) | anywhere | inside the roots | yes |
+| `strict` | inside the roots | inside the roots | no |
+
+As long as commands run, a shell command can do what the path checks refuse.
+The modes guard against a slip, not against intent.
 
 `workspace_from(mapping)` builds the same thing from a configuration dict, for
-a caller that reads its settings from a file.
+a caller that reads its settings from a file; the boundary comes from the keys
+`allowed_roots` and `mode`.
 
 ## What there is
 
@@ -132,6 +142,10 @@ a caller that reads its settings from a file.
 `file_write` earns its place next to `shell_exec`: a heredoc inside a long
 command line is where quoting goes wrong, and writing a file is too common to
 leave to that.
+
+`file_delete` removes nothing for good. It moves the entry into `trash` under
+`state_dir`, named with the time of deletion, and refuses when there is no
+`state_dir`.
 
 `str_replace` insists on exactly one match. No match means the caller is
 looking at a different file than they think; several matches mean the change

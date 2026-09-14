@@ -11,12 +11,17 @@ from pathlib import Path
 
 import pytest
 
-from mcp_shell_tools import ToolError, Workspace
+from mcp_shell_tools import Boundary, ToolError, Workspace
 from mcp_shell_tools.server import app
 
 
 def test_stdio_is_the_default() -> None:
     assert app.parse([]).transport == "stdio"
+
+
+def test_the_legacy_sse_transport_is_not_offered() -> None:
+    with pytest.raises(SystemExit):
+        app.parse(["--transport", "sse"])
 
 
 def test_the_http_arguments_are_read() -> None:
@@ -55,14 +60,23 @@ def test_the_workspace_carries_the_arguments(tmp_path: Path) -> None:
     space = app.workspace_from_args(args)
 
     assert space.working_dir == tmp_path
-    assert space.allowed_roots == (tmp_path,)
+    assert space.boundary == Boundary((tmp_path,), "guarded")
     assert space.state_dir == tmp_path / "state"
+
+
+def test_the_mode_can_be_chosen() -> None:
+    assert app.parse(["--mode", "strict"]).mode == "strict"
+
+
+def test_an_unknown_mode_is_not_offered() -> None:
+    with pytest.raises(SystemExit):
+        app.parse(["--mode", "loose"])
 
 
 def test_without_allowed_roots_there_is_no_boundary(tmp_path: Path) -> None:
     space = app.workspace_from_args(app.parse(["--working-dir", str(tmp_path)]))
 
-    assert not space.allowed_roots
+    assert not space.boundary.roots
     assert space.resolve("/etc") == Path("/etc")
 
 
@@ -134,7 +148,9 @@ def test_a_refusal_keeps_its_reason(tmp_path: Path) -> None:
 
 def test_a_boundary_refusal_keeps_its_reason(tmp_path: Path) -> None:
     exceptions = pytest.importorskip("mcp.server.mcpserver.exceptions")
-    built = app.build(Workspace(working_dir=tmp_path, allowed_roots=(tmp_path,)))
+    built = app.build(
+        Workspace(working_dir=tmp_path, boundary=Boundary((tmp_path,), "strict"))
+    )
 
     with pytest.raises(exceptions.ToolError) as refused:
         asyncio.run(built.call_tool("file_read", {"path": "/etc/hostname"}))

@@ -17,7 +17,8 @@ publishes these functions; the library itself never imports it.
 from importlib.metadata import PackageNotFoundError, version
 
 from mcp_shell_tools import edit, files, find, notes, place, run, system
-from mcp_shell_tools.errors import OutsideBoundaryError, ToolError
+from mcp_shell_tools.boundary import Boundary
+from mcp_shell_tools.errors import NotPermittedError, OutsideBoundaryError, ToolError
 from mcp_shell_tools.workspace import Workspace, workspace_from
 
 try:
@@ -26,6 +27,8 @@ except PackageNotFoundError:  # running from a source tree that was never instal
     __version__ = "0.0.0"
 
 __all__ = [
+    "Boundary",
+    "NotPermittedError",
     "OutsideBoundaryError",
     "ToolError",
     "Workspace",

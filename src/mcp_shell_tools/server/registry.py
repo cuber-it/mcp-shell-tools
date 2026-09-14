@@ -85,7 +85,8 @@ def _files(space: Workspace) -> Catalogue:
     def file_delete(path: str) -> str:
         """Delete a file, or a directory with everything below it.
 
-        There is no undo. Check with file_list first if unsure.
+        It goes to the trash under the state directory, not away for good. The
+        answer names where it went, and file_move brings it back.
 
         Auf Deutsch: Datei löschen, entfernen, Verzeichnis wegräumen.
         """
@@ -233,7 +234,8 @@ def _running(space: Workspace) -> Catalogue:
 
         Standard output and standard error come back together, and a non-zero
         exit status is named, so a failure cannot be mistaken for silence.
-        Give timeout in seconds to override the configured default.
+        Give timeout in seconds to override the configured default. Refused
+        when the server runs in strict mode.
 
         Auf Deutsch: Befehl ausführen, Kommando, Shell, Terminal, aufrufen, starten.
         """

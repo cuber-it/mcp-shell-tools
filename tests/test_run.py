@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from mcp_shell_tools import ToolError, Workspace, run
+from mcp_shell_tools import Boundary, NotPermittedError, ToolError, Workspace, run
 
 
 def test_a_command_returns_its_output(space: Workspace) -> None:
@@ -29,6 +29,15 @@ def test_a_command_without_output_says_so(space: Workspace) -> None:
 
 def test_error_output_comes_back_too(space: Workspace) -> None:
     assert "trouble" in run.shell_exec(space, "echo trouble >&2")
+
+
+def test_strict_mode_refuses_a_command(tmp_path: Path) -> None:
+    space = Workspace(working_dir=tmp_path, boundary=Boundary(mode="strict"))
+
+    with pytest.raises(NotPermittedError):
+        run.shell_exec(space, "touch made")
+
+    assert not (tmp_path / "made").exists()
 
 
 def test_a_command_that_hangs_is_stopped(space: Workspace) -> None:

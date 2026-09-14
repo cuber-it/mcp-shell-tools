@@ -6,7 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from mcp_shell_tools import OutsideBoundaryError, ToolError, Workspace, workspace_from
+from mcp_shell_tools import (
+    Boundary,
+    OutsideBoundaryError,
+    ToolError,
+    Workspace,
+    workspace_from,
+)
+from mcp_shell_tools.boundary import Access
 
 
 def test_a_relative_path_is_taken_from_the_working_directory(
@@ -24,7 +31,7 @@ def test_a_tilde_is_expanded(space: Workspace) -> None:
 
 
 def test_without_roots_everything_is_allowed(space: Workspace) -> None:
-    assert space.resolve("/etc") == Path("/etc")
+    assert space.resolve("/etc", Access.DESTROY) == Path("/etc")
 
 
 def test_a_path_inside_the_roots_is_allowed(bounded: Workspace) -> None:
@@ -52,6 +59,20 @@ def test_a_link_out_of_the_roots_is_refused(bounded: Workspace) -> None:
 
     with pytest.raises(OutsideBoundaryError):
         bounded.resolve("link/outside.txt")
+
+
+def test_the_refusal_names_the_access(bounded: Workspace) -> None:
+    with pytest.raises(OutsideBoundaryError, match="for destroy"):
+        bounded.resolve("/etc/hostname", Access.DESTROY)
+
+
+def test_guarded_resolves_reading_outside_but_not_destroying(
+    guarded: Workspace,
+) -> None:
+    assert guarded.resolve("../outside.txt").name == "outside.txt"
+
+    with pytest.raises(OutsideBoundaryError):
+        guarded.resolve("../outside.txt", Access.DESTROY)
 
 
 def test_an_existing_path_is_returned(space: Workspace, tmp_path: Path) -> None:
@@ -115,6 +136,16 @@ def test_globbing_leaves_out_links_out_of_the_roots(bounded: Workspace) -> None:
     assert bounded.glob(inside, "*") == []
 
 
+def test_guarded_globbing_for_destroying_stays_inside(guarded: Workspace) -> None:
+    inside = guarded.working_dir
+
+    reading = guarded.glob(inside, "../*.txt")
+    destroying = guarded.glob(inside, "../*.txt", Access.DESTROY)
+
+    assert [hit.name for hit in reading] == ["outside.txt"]
+    assert destroying == []
+
+
 def test_without_roots_a_pattern_may_climb(tmp_path: Path) -> None:
     inside = tmp_path / "inside"
     inside.mkdir()
@@ -131,12 +162,30 @@ def test_an_unusable_pattern_is_refused(space: Workspace, pattern: str) -> None:
         space.glob(space.working_dir, pattern)
 
 
+def test_the_trash_lies_in_the_state_directory(
+    space: Workspace, tmp_path: Path
+) -> None:
+    assert space.trash() == tmp_path / "state/trash"
+
+
+def test_without_a_state_directory_there_is_no_trash(tmp_path: Path) -> None:
+    with pytest.raises(ToolError, match="no state_dir"):
+        Workspace(working_dir=tmp_path).trash()
+
+
 def test_configuration_is_read(tmp_path: Path) -> None:
     space = workspace_from(
-        {"working_dir": str(tmp_path), "timeout": 5, "max_output": 7}
+        {
+            "working_dir": str(tmp_path),
+            "allowed_roots": [str(tmp_path)],
+            "mode": "strict",
+            "timeout": 5,
+            "max_output": 7,
+        }
     )
 
     assert space.working_dir == tmp_path
+    assert space.boundary == Boundary((tmp_path,), "strict")
     assert space.timeout == 5
     assert space.max_output == 7
 
@@ -149,7 +198,12 @@ def test_an_empty_configuration_still_works(
     space = workspace_from({})
 
     assert space.working_dir == tmp_path.resolve()
-    assert not space.allowed_roots
+    assert space.boundary == Boundary()
+
+
+def test_an_unknown_mode_in_the_configuration_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(ToolError, match="no such mode"):
+        workspace_from({"working_dir": str(tmp_path), "mode": "loose"})
 
 
 def test_a_working_directory_that_is_no_directory_is_refused(tmp_path: Path) -> None:

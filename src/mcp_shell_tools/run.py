@@ -22,9 +22,11 @@ def shell_exec(space: Workspace, command: str, timeout: float = 0) -> str:
         The output, with the exit status if it was not zero.
 
     Raises:
+        NotPermittedError: The mode does not let commands run.
         ToolError: The command did not finish in time, or could not be
             started at all.
     """
+    space.boundary.permit_execute()
     limit = timeout if timeout > 0 else space.timeout
     try:
         finished = subprocess.run(

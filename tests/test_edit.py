@@ -138,6 +138,20 @@ def test_find_replace_does_not_write_out_of_bounds(bounded: Workspace) -> None:
     assert outside.read_text(encoding="utf-8") == "secret\n"
 
 
+def test_guarded_find_replace_does_not_write_out_of_bounds(guarded: Workspace) -> None:
+    outside = guarded.working_dir.parent / "outside.txt"
+
+    edit.find_replace(guarded, "secret", "open", ".", "../*", apply=True)
+
+    assert outside.read_text(encoding="utf-8") == "secret\n"
+
+
+def test_guarded_dry_run_looks_out_of_bounds(guarded: Workspace) -> None:
+    out = edit.find_replace(guarded, "secret", "open", ".", "../*")
+
+    assert "outside.txt" in out
+
+
 def test_find_replace_says_when_the_limit_stopped_it(tmp_path: Path) -> None:
     space = Workspace(working_dir=tmp_path, max_results=2)
     for name in ("a", "b", "c"):

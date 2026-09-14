@@ -5,6 +5,7 @@ from __future__ import annotations
 import difflib
 from pathlib import Path
 
+from mcp_shell_tools.boundary import Access
 from mcp_shell_tools.errors import ToolError
 from mcp_shell_tools.output import cut, read_text, text_or_none
 from mcp_shell_tools.workspace import Workspace
@@ -21,7 +22,7 @@ def str_replace(space: Workspace, path: str, old: str, new: str) -> str:
         ToolError: The passage is missing, ambiguous, or the file is
             unreadable.
     """
-    target = space.resolve(path)
+    target = space.resolve(path, Access.WRITE)
     text = read_text(target)
     found = text.count(old)
     if found == 0:
@@ -80,8 +81,9 @@ def find_replace(
         ToolError: The path does not exist, the pattern is not usable, or a
             file cannot be written.
     """
-    root = space.existing(path)
-    targets = [root] if root.is_file() else space.glob(root, f"**/{glob}")
+    access = Access.DESTROY if apply else Access.READ
+    root = space.existing(path, access)
+    targets = [root] if root.is_file() else space.glob(root, f"**/{glob}", access)
     hits, stopped = _replace_in(targets, old, new, apply, space.max_results)
 
     if not hits:

@@ -106,7 +106,7 @@ def session_list(space: Workspace) -> str:
     Raises:
         ToolError: No state directory is configured.
     """
-    directory = _state_dir(space)
+    directory = space.state()
     if not directory.is_dir():
         return "no sessions saved"
     rows = []
@@ -128,26 +128,16 @@ def session_list(space: Workspace) -> str:
     return "\n".join(row for _, row in rows[: space.max_results])
 
 
-def _state_dir(space: Workspace) -> Path:
-    """Return where sessions are written.
-
-    Raises:
-        ToolError: No directory is configured.
-    """
-    if space.state_dir is None:
-        raise ToolError("no state_dir configured, sessions cannot be saved")
-    return space.state_dir
-
-
 def _session_file(space: Workspace, name: str) -> Path:
     """Return the file a session is stored in.
 
     Raises:
-        ToolError: The name would escape the state directory.
+        ToolError: The name would escape the state directory, or no state
+            directory is configured.
     """
     if not name or "/" in name or name.startswith("."):
         raise ToolError(f"not a usable session name: {name!r}")
-    return _state_dir(space) / f"{name}{SESSION_SUFFIX}"
+    return space.state() / f"{name}{SESSION_SUFFIX}"
 
 
 def _read_session(path: Path) -> dict[str, Any]:

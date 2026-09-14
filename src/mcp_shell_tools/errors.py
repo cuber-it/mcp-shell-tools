@@ -11,3 +11,7 @@ class ToolError(Exception):
 
 class OutsideBoundaryError(ToolError):
     """The path lies outside what this installation may touch."""
+
+
+class NotPermittedError(ToolError):
+    """The mode this installation runs in does not permit the action."""
