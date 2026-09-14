@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
-import importlib.util
 import os
 import stat
 import subprocess
 import sys
 import time
 from pathlib import Path
-from types import ModuleType
 
 import pytest
 
-from mcp_shell_tools import Boundary, GrantError
+from mcp_shell_tools import Boundary, GrantError, grant
 from mcp_shell_tools.grant import (
     GRANT_FILE,
+    GRANT_MODULE,
     GRANT_SCRIPT,
     Grant,
     boundary_in_force,
@@ -24,22 +23,11 @@ from mcp_shell_tools.grant import (
     read_grant,
     write_grant,
 )
+from mcp_shell_tools.tools import mcp_shell_grant as tool
 
-TOOL = Path(__file__).resolve().parents[1] / "tools" / "mcp_shell_grant.py"
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "grant.sh"
 HOME = Path("/home/someone")
 BASE = Boundary((HOME,), "guarded", execute=False)
-
-
-def _load_tool() -> ModuleType:
-    """Load the grant program from tools/ as a module."""
-    spec = importlib.util.spec_from_file_location("mcp_shell_grant", TOOL)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-tool = _load_tool()
 
 
 def later(seconds: float = 3600) -> float:
@@ -170,13 +158,24 @@ def test_the_hint_points_at_the_wrapper_script() -> None:
     assert GRANT_SCRIPT.is_file()
 
 
+def test_without_a_checkout_the_hint_names_the_module(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(grant, "GRANT_SCRIPT", tmp_path / "missing" / "grant.sh")
+
+    text = hint(tmp_path, "--exec")
+
+    expected = f"{sys.executable} -m {GRANT_MODULE} --state-dir {tmp_path} set --exec"
+    assert expected in text
+
+
 def test_without_a_state_directory_the_hint_says_what_is_missing() -> None:
     assert "--state-dir" in hint(None, "--exec")
 
 
-def test_the_program_runs_from_the_command_line(tmp_path: Path) -> None:
+def test_the_program_runs_as_a_module(tmp_path: Path) -> None:
     finished = subprocess.run(
-        [sys.executable, str(TOOL), "--state-dir", str(tmp_path), "show"],
+        [sys.executable, "-m", GRANT_MODULE, "--state-dir", str(tmp_path), "show"],
         capture_output=True,
         text=True,
         check=False,

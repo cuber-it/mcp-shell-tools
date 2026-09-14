@@ -14,7 +14,7 @@ All of them have to pass before a change is committed.
 ```bash
 .venv/bin/ruff format --check .
 .venv/bin/ruff check .
-.venv/bin/python -m pylint src tests tools
+.venv/bin/python -m pylint src tests
 .venv/bin/python -m pytest
 shellcheck scripts/grant.sh
 ```
@@ -42,8 +42,8 @@ src/mcp_shell_tools/
     registry.py      the tools as a catalogue, no SDK
     auth.py          token checks and their configuration, no SDK
     app.py           the MCP server, the only module importing the SDK
-tools/
-  mcp_shell_grant.py the grant program
+  tools/
+    mcp_shell_grant.py  the grant program, part of the package
 scripts/
   grant.sh           runs the grant program with the repository's venv
 tests/

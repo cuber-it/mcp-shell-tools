@@ -1,10 +1,10 @@
 """Grants: raising or lowering the boundary from outside, for a limited time.
 
-A grant is a file in the server's state directory, written on the host through
-``scripts/grant.sh`` and never by the tools. The server reads it at every
-check, so a grant takes effect at the next tool call and lapses when its time
-is up, without a restart. Refusals name the ``scripts/grant.sh`` call that
-would lift them.
+A grant is a file in the server's state directory, written on the host by
+:mod:`mcp_shell_tools.tools.mcp_shell_grant` and never by the tools. The server
+reads it at every check, so a grant takes effect at the next tool call and
+lapses when its time is up, without a restart. Refusals name the call that
+would lift them: ``scripts/grant.sh`` in a checkout, the module otherwise.
 
 A grant changes the configured boundary in up to three ways:
 
@@ -22,6 +22,7 @@ from __future__ import annotations
 import contextlib
 import json
 import re
+import sys
 import time
 from dataclasses import dataclass
 from functools import lru_cache
@@ -32,6 +33,7 @@ from mcp_shell_tools.errors import GrantError
 from mcp_shell_tools.output import span
 
 GRANT_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "grant.sh"
+GRANT_MODULE = "mcp_shell_tools.tools.mcp_shell_grant"
 GRANT_FILE = "grant.json"
 DEFAULT_STATE_DIR = "~/.mcp-shell-tools"
 SUGGESTED_DURATION = "1h"
@@ -222,12 +224,24 @@ def parse_duration(text: str) -> int:
     return int(match[1]) * SECONDS[match[2]]
 
 
+def grant_call() -> str:
+    """Return how grants are set on this host.
+
+    Returns:
+        ``scripts/grant.sh`` when the package runs from a checkout, otherwise
+        the grant module started with the interpreter of this process.
+    """
+    if GRANT_SCRIPT.is_file():
+        return str(GRANT_SCRIPT)
+    return f"{sys.executable} -m {GRANT_MODULE}"
+
+
 def hint(state_dir: Path | None, change: str) -> str:
     """Return how a refusal can be lifted, for the message that reports it."""
     if state_dir is None:
         return "grants need a server started with --state-dir"
     return (
-        f"a person on the host can allow it with: {GRANT_SCRIPT} --state-dir "
+        f"a person on the host can allow it with: {grant_call()} --state-dir "
         f"{state_dir} set {change} --for {SUGGESTED_DURATION}"
     )
 
@@ -236,6 +250,6 @@ def _unusable(where: Path, reason: str) -> str:
     """Return the message for a grant file that stops every check."""
     return (
         f"the grant file {where} cannot be used ({reason}); every check is "
-        f"refused until it is fixed or removed with {GRANT_SCRIPT} --state-dir "
+        f"refused until it is fixed or removed with {grant_call()} --state-dir "
         f"{where.parent} reset"
     )

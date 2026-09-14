@@ -83,8 +83,14 @@ A grant has to change something. A new grant replaces the previous one. Lasting
 changes belong in the server's own options.
 
 `scripts/grant.sh` finds the repository from its own location, also through a
-symlink, and runs `tools/mcp_shell_grant.py` with the interpreter of the
-repository's `.venv`.
+symlink, and runs `python -m mcp_shell_tools.tools.mcp_shell_grant` with the
+interpreter of the repository's `.venv`. Installed from PyPI, without a
+checkout, the same module is called with the interpreter the server runs with,
+and refusals name that call instead:
+
+```bash
+/path/to/venv/bin/python -m mcp_shell_tools.tools.mcp_shell_grant show
+```
 
 ## The grant file
 

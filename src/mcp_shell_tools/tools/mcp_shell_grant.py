@@ -1,13 +1,15 @@
-#!/usr/bin/env python3
 """Raise or lower the boundary of a running mcp-shell-tools server.
 
-A person on the host runs this, through ``scripts/grant.sh``, which starts it
-with the interpreter of the repository's venv:
+A person on the host runs this, with the interpreter the server runs with. In a
+checkout ``scripts/grant.sh`` does that:
 
     scripts/grant.sh set --root /opt/data --for 2h
     scripts/grant.sh set --exec --for 30m
     scripts/grant.sh show
     scripts/grant.sh reset
+
+After ``pip install`` the same program is
+``python -m mcp_shell_tools.tools.mcp_shell_grant``.
 
 What a grant changes and how the server reads it is described in
 :mod:`mcp_shell_tools.grant`.
@@ -31,7 +33,7 @@ from mcp_shell_tools.grant import (
     write_grant,
 )
 
-PROG = "mcp_shell_grant.py"
+PROG = "mcp_shell_grant"
 REFUSED = 2
 
 

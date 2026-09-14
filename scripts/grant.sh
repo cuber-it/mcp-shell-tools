@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Raise or lower the boundary of a running mcp-shell-tools server.
 #
-# Wraps tools/mcp_shell_grant.py with the interpreter of this repository's
-# venv, so it can be called from anywhere, also through a symlink:
+# Runs mcp_shell_tools.tools.mcp_shell_grant with the interpreter of this
+# repository's venv, so it can be called from anywhere, also through a symlink:
 #
 #   scripts/grant.sh set --root /opt/data --for 2h
 #   scripts/grant.sh set --exec --for 30m
@@ -21,4 +21,4 @@ if [[ ! -x "$python" ]]; then
     exit 2
 fi
 
-exec "$python" "$repo/tools/mcp_shell_grant.py" "$@"
+exec "$python" -m mcp_shell_tools.tools.mcp_shell_grant "$@"
